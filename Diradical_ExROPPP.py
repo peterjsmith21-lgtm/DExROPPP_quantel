@@ -28,25 +28,39 @@ from ExROPPP_settings_opt import *
 
 
 def read_geom(file):
+    '''
+    Read molecular geometry from file and returns various arrays and integers.
+    
+    Args:
+        - file (str): File containing molecular geometries in ... format.
+    Returns:
+        - array (ndarray): 2D Array of atomic coordinates of all heavy atoms (C then N then Cl) in Angstrom. Shape (natoms, 3).
+                         Used as the atomic coordinates array for electronic structure calculation.
+        - atoms (ndarray): Array of atomic symbols and atomic numbers for all atoms. Listed in order of carbon then nitrogen 
+                         then chlorine then hydrogen. Shape (natoms, 2).
+        - array_all (ndarray): Array of atomic coordinates of all atoms including hydrogen in order to calculate number of bonds 
+                         to nitrogen. Not used if N isn't present.
+        - natoms_{c, n, cl} (int): Number of carbon, nitrogen and chlorine atoms respectively.
+        - natoms (int): Total number of heavy atoms in the molecule.
+    '''
     print("--------------------------------")
     print("Cartesian Coordinates / Angstrom")
     print("--------------------------------\n")
     f=open(file,'r')
-    array=[] # array of coordinates of all atoms excluding hydrogen to be used as the atomic coordinates array for electronic structure calculation. If only carbon present it is array of carbon atoms
-    array_n=[] # array of coordinates of specifically nitrogen atoms
-    array_h=[] # array of coordinates of specifically hydrogen atoms
-    array_cl=[] # array of coordinates of specifically chlorine atoms
-    array_all=[] # array of coordinates of all atoms including hydrogen in order to calculate number of bonds to nitrogen. 
-    #^ array_all has no functionality unless nitrogen present.
-    atoms_c=[] # array of atomic symbols and atomic numbers of all atoms except hydrogen
+    array=[]
+    array_n=[]
+    array_h=[] 
+    array_cl=[] 
+    array_all=[]
+    atoms_c=[] 
     atoms_n=[]
     atoms_cl=[]
     atoms_h=[]
-    natoms_c=0 #no of carbon atoms
-    natoms_n=0 #no of nitrogen atoms
-    natoms_cl=0 #no of chlorine atoms
-    natoms_h=0 #no of hydrogen atoms
-    for line in f:
+    natoms_c=0
+    natoms_n=0 
+    natoms_cl=0 
+    natoms_h=0 
+    for line in f: # Read through lines of file
         splt_ln=line.split()
         if line == '\n':
             break
@@ -85,12 +99,21 @@ def read_geom(file):
     if natoms_h==0:
         array_all = array
     else:
-        array_all=np.concatenate((array,array_h))
-    atoms=atoms_c+atoms_n+atoms_cl+atoms_h # carbon then nitrogen then chlorine then hydrogen
-    return array,atoms,array_all,natoms_c,natoms_n,natoms_cl,natoms_c+natoms_n+natoms_cl
+        array_all = np.concatenate((array,array_h))
+    atoms=atoms_c+atoms_n+atoms_cl+atoms_h
+    natoms = natoms_c+natoms_n+natoms_cl
+    return array, atoms, array_all, natoms_c, natoms_n, natoms_cl, natoms
 
 
 def distance(array):
+    '''
+    Takes a list of atomic coordinates for n atoms and returns an (nxn) array of interatomic distances.
+    
+    Args:
+        - array (ndarray): 2D Array of atomic coordinates of all heavy atoms (C then N then Cl) in Angstrom.
+    Returns:
+        -dist_array (ndarray): 2D Array of interatomic distances in Angstrom.
+    '''
     n = array.shape[0]
     dist_array = np.zeros((n, n))
     
@@ -108,7 +131,18 @@ def distance(array):
     
     return dist_array
 
-def adjacency(dist_array,cutoff):
+def adjacency(dist_array, cutoff):
+    '''
+    Takes a 2D array of interatomic distances and a cutoff distance, and returns an adjacency matrix and bond list based on 
+    whether the distance between atoms is less than the cutoff.
+    
+    Args:
+        - dist_array (ndarray): 2D Array of interatomic distances in Angstrom.
+        - cutoff (float): Cutoff distance in Angstrom for considering a bond.
+    Returns:
+        - adj_mat (ndarray): 2D adjacency matrix. Value of 1 if atoms are considered bonded, 0 otherwise.
+        - bond_list (list): List of pairs of atom indices that are bonded.
+    '''
     mask = (dist_array < cutoff) & (np.triu(np.ones_like(dist_array, dtype=bool), k=1))  # Upper triangle only (excluding diagonal)
     
     # Create the adjacency matrix
@@ -118,7 +152,6 @@ def adjacency(dist_array,cutoff):
     
     # Generate bond list
     bond_list = np.array(np.nonzero(mask)).T.tolist()  
-    bond_count = len(bond_list)
     return adj_mat, bond_list
 
 
@@ -126,24 +159,66 @@ def array_intersect(lst1, lst2):
     list3 = list(set(lst1).intersection(set(lst2)))
     return list3
 
-def dihedrals(natoms,atoms,coords,dist_array):
-    a2,bond_list=adjacency(dist_array,cutoff)
-    a3=np.dot(a2,a2)
-    a4=np.dot(a3,a2)
+
+def compute_angle(dihedral, coords):
+    '''
+    Computes the dihedral angle between four atoms given their indices and coordinates.
+    
+    Args:
+        - dihedral: List of four atom indices (k-i-j-l) for which to compute the dihedral angle.
+        - coords: 2D array of atomic coordinates for all atoms in the molecule.
+    Returns:
+        theta: The dihedral angle in degrees.
+    '''
+    # angle k-i-j-l
+    rij = coords[dihedral[2],:]-coords[dihedral[1],:]
+    rik = coords[dihedral[0],:]-coords[dihedral[1],:]
+    rjl = coords[dihedral[3],:]-coords[dihedral[2],:]
+    r1 = np.cross(rij,rik)
+    r2 = np.cross(rij,rjl)
+    # r1.r2 = |r1||r2|cost
+    theta = np.arccos(np.dot(r1,r2)/(linalg.norm(r1)*linalg.norm(r2))) * 180/np.pi
+    if theta > 90:
+        theta = 180 - theta
+    if theta < 0:
+        theta = -theta
+    return theta
+
+
+def dihedrals(natoms,atoms,coords,dist_array, cutoff=cutoff, single_bond_cutoff=single_bond_cutoff, single_bond_cutoff_cn=single_bond_cutoff_cn):
+    '''
+    Computes dihedral angles for all pairs of atoms that are 4 bonds apart and returns a dictionary of 
+    average dihedral angles for each bond in the molecule.
+    
+    Args:
+        - natoms (int): Number of atoms in the molecule.
+        - atoms (ndarray): List of atom types for each atom in the molecule.
+        - coords (ndarray): 2D array of atomic coordinates for all atoms in the molecule.
+        - dist_array (ndarray): 2D array of interatomic distances in Angstrom.
+        - cutoff (float): Cutoff distance in Angstrom for considering a bond.
+        - single_bond_cutoff (float): Cutoff distance in Angstrom for considering a single bond between carbon atoms.
+        - single_bond_cutoff_cn (float): Cutoff distance in Angstrom for considering a single bond between nitrogen atoms.
+    Returns:
+        angles (dict): Dictionary where keys are strings of the form 'i-j' representing a bond between atoms i and j, 
+        and values are the average dihedral angle in degrees for that bond.
+    '''
+    a2, bond_list = adjacency(dist_array,cutoff) # get adjacency matrix and bond list for molecule (1 bond apart)
+    a3=np.dot(a2,a2) # get paths of length 2 between atoms (2 bonds apart)
+    a4=np.dot(a3,a2) # get paths of length 3 between atoms (3 bonds apart)
     lst=[]
     for i in range(natoms):
         for j in range(i+1,natoms):
-            if a4[i,j]!=0 and a3[i,j]==0 and a2[i,j]==0:
+            if a4[i,j]!=0 and a3[i,j]==0 and a2[i,j]==0: # Identify atom pairs that are exactly 3 bonds apart
                 lst.append([i,j])
                 lst.append([j,i])
     angles={}
     for dihedral in lst:
         for bond in bond_list:
-            if a2[dihedral[0],bond[0]]==1 and a2[dihedral[1],bond[1]]==1:
+            if a2[dihedral[0],bond[0]]==1 and a2[dihedral[1],bond[1]]==1: # Checking for continuous 4-atom chain
                 if dist_array[bond[0],bond[1]]>single_bond_cutoff and atoms[bond[0]][0] in ['C','c'] and atoms[bond[1]][0] in ['C','c']:
                     theta=compute_angle([dihedral[0],bond[0],bond[1],dihedral[1]],coords)
                     if '%s-%s'%(bond[0],bond[1]) in angles:
-                        angles['%s-%s'%(bond[0],bond[1])].append(theta)
+                        angles['%s-%s'%(bond[0],bond[1])].append(theta) # Store angles associated with central bond in a list
                     else:
                         angles.update({'%s-%s'%(bond[0],bond[1]):[theta]})
                 elif dist_array[bond[0],bond[1]]>single_bond_cutoff_cn and array_intersect([atoms[bond[0]][0],atoms[bond[1]][0]],['N','n','N2','n2']) in [['N'],['n'],['N2'],['n2']]:
@@ -154,26 +229,22 @@ def dihedrals(natoms,atoms,coords,dist_array):
                         angles.update({'%s-%s'%(bond[0],bond[1]):[theta]})
     for bond in angles:
         avg_angle=sum(angles[bond])/len(angles[bond])
-        angles.update({bond:avg_angle})
+        angles.update({bond:avg_angle}) # Average over all dihedral angles associated with each bond to get one dihedral angle per bond
     return angles 
-    
-def compute_angle(dihedral,coords):
-    # angle k-i-j-l
-    rij = coords[dihedral[2],:]-coords[dihedral[1],:]
-    rik = coords[dihedral[0],:]-coords[dihedral[1],:]
-    rjl = coords[dihedral[3],:]-coords[dihedral[2],:]
-    r1 = np.cross(rij,rik)
-    r2 = np.cross(rij,rjl)
-    # r1.r2 = |r1||r2|cost
-    theta = np.arccos(np.dot(r1,r2)/(linalg.norm(r1)*linalg.norm(r2))) * 180/np.pi
-     # return angle between 0 and (+)90 deg
-    if theta > 90:
-        theta = 180 - theta
-    if theta < 0:
-        theta = -theta
-    return theta
 
-def re_center(coords,atoms,coords_h): 
+
+def re_center(coords, atoms, coords_h):
+    '''
+    Centers the coordinates of the molecule on the center of mass of the heavy atoms and returns the recentred coordinates and the center of mass.
+    
+    Args:
+        - coords (ndarray): 2D array of atomic coordinates for all heavy atoms in the molecule.
+        - atoms (ndarray): List of atomic symbols and atomic numbers for all atoms in the molecule.
+        - coords_h (ndarray): 2D array of atomic coordinates for all atoms in the molecule including hydrogen.
+    Returns:
+        - com (ndarray): 1D array of the x, y, z coordinates of the center of mass of the heavy atoms in the molecule.
+        - coords (ndarray): 2D array of atomic coordinates for all heavy atoms in the molecule, recentred with the COM at the origin.
+    '''
     com = np.zeros(3)
     summass=0
     for i in range(coords_h.shape[0]):
@@ -182,25 +253,48 @@ def re_center(coords,atoms,coords_h):
     com[:] /= summass
     for i in range(coords.shape[0]):
         coords[i,:] -= com
-    return com,coords # return recentred coords for heavy atoms only
+    return com, coords
 
-def ntype(array_all,atoms,natomsc,natomsn):
+def ntype(array_all, atoms, natoms_c, natoms_n):
+    ''' Classifies Nitrogen atoms based on their bonding coordination (number of bonds - 2).Calculates the number of neighbors within a cutoff distance for each 
+        Nitrogen atom and returns a list of Nitrogen coordinations then updates the atom labels to reflect their connectivity.
+
+    Args:
+        - array_all (numpy.ndarray): (N, 3) array of all atom coordinates.
+        - atoms (list): List of atom data, where atoms[i][0] is the element label.
+        - natom_c (int): The number of Carbon atoms in the molecule.
+        - natoms_n (int): The number of Nitrogen atoms in the molecule.
+
+    Returns:
+        - nlist (list): A list of coordination indices (nbonds - 2).
+        - atoms (list): The updated atoms list with specific Nitrogen labels.
+    '''
     nlist=[]
-    for natom in range(natomsn):
-        nbonds=-1 #will count distance between atom and itself as a bond so subtract 1 bond to account for this
+    for natom in range(natoms_n):
+        nbonds=-1 #Prevent counting the N atom with itself
         for iatom in range(array_all.shape[0]):
             distn=0
             for k in range(3):
-                distn+=(array_all[natom+natomsc,k]-array_all[iatom,k])**2
+                distn += (array_all[natom + natoms_c,k]-array_all[iatom,k])**2
             distn=np.sqrt(distn)
             if distn < cutoff:
                 nbonds+=1
         nlist.append(nbonds-2)
-        atoms[natom+natomsc][0]='N'+str(nbonds-1)
-    return nlist,atoms   
+        atoms[natom+natoms_c][0]='N'+str(nbonds-1)
+    return nlist, atoms   
    
-#Function to group atoms into starred and unstarred
-def conec(ncarb,array):
+
+def conec(ncarb, dist_array):
+    '''
+    Group atoms in alternant hydrocarbons into starred and unstarred lists.
+    
+    Args:
+        - ncarb (int): Number of carbon atoms in the molecule.
+        - dist_array (ndarray): 2D Array of interatomic distances in Angstrom.
+    Returns:
+        - star (list): List of indices of starred atoms.
+        - unst (list): List of indices of unstarred atoms.
+    '''
     star = []
     unst = []
     star.append(0)
@@ -211,13 +305,13 @@ def conec(ncarb,array):
         uatom = []
         for i in satom:
             for j in range(i+1,ncarb):
-                if array[i,j] < cutoff and j not in unst:
+                if dist_array[i,j] < cutoff and j not in unst:
                     uatom.append(j)
                     unst.append(j)
         satom = []            
         for i in uatom:
             for j in range(i+1,ncarb):
-                if array[i,j] < cutoff and j not in star:
+                if dist_array[i,j] < cutoff and j not in star:
                     satom.append(j)
                     star.append(j)
     if len(star) < len(unst):
@@ -231,7 +325,21 @@ def conec(ncarb,array):
     return star, unst
 
 # Routine to group bonding and antibonding orbitals into coulson-rushbrooke pairs
-def order_orbs(ncarb,orbs,orb_energies,alt):
+def order_orbs(ncarb, orbs, orb_energies, alt):
+    '''
+    Pairs bonding and antibonding orbitals based on Coulson-Rushbrooke symmetry.In alternant hydrocarbons, orbitals occur in pairs with energies 
+    +/- E and identical coefficient magnitudes. This function identifies those pairs by matching energy levels and verifying orbital coefficient magnitudes.
+
+    Args:
+        ncarb (int): Number of carbon atoms/total orbitals.
+        orbs (numpy.ndarray): Matrix of orbital coefficients (columns are orbitals).
+        orb_energies (numpy.ndarray): Array of orbital energies.
+        alt (bool): Current alternacy status of the molecule.
+
+    Returns:
+        - pairs_list (list of lists): Indices of paired [bonding, antibonding] orbitals.
+        - alt (bool): Updated alternacy status (set to False if pairing fails).
+    '''
     print(' ')
     nbond = int((ncarb-1)/2)
     anti_list = list(range(nbond+1,ncarb))
@@ -240,13 +348,13 @@ def order_orbs(ncarb,orbs,orb_energies,alt):
     search = False      
     for ibond in range(nbond):
         if abs(orb_energies[ibond+1] - orb_energies[ibond]) < 1e-6:
-            print("degenerate orbitals %d and %d!"%(ibond+1,ibond+2))
+            print("degenerate orbitals %d and %d!"%(ibond+1,ibond+2)) #CHECK
             search=True
         elif ibond > 0:
             if abs(orb_energies[ibond-1] - orb_energies[ibond]) < 1e-6:
-                print("degenerate orbitals %d and %d!"%(ibond+1,ibond))
+                print("degenerate orbitals %d and %d!"%(ibond+1,ibond)) #CHECK
                 search=True
-        if search == False:
+        if search == False: # If orbital ibond is not degenerate, assign as Coulson-Rushbrooke pair with opposite orbital in energy ordering
             ianti = ncarb-ibond-1
             pairs_list.append([ibond,ianti])
             anti_list.remove(ianti)
@@ -274,16 +382,29 @@ def order_orbs(ncarb,orbs,orb_energies,alt):
                 else:
                     print("absolute energies %4f eV and %4f eV do not match, difference = %4f eV"%(orb_energies[ibond],orb_energies[ianti],abs(abs(orb_energies[ianti]) - abs(orb_energies[ibond]))))
                 if ianti==anti_list[len(anti_list)-1] and search==True: # if all antibonding orbitals are tried and none match the bonding orbital, warn user and switch off alternacy
-                    print("\nWARNING!!: Could not find Coulson-Rushbrooke pair for orbital %d, switching off alternacy. If molecule is alternant, try lowering orbital coefficient matching threshold and re-run calculation. But examine the orbitals first!"%(ibond+1))
+                    print("\nWARNING!!: Could not find Coulson-Rushbrooke pair for orbital %d, switching off alternacy. If molecule is alternant, try lowering orbital coefficient matching threshold and re-run calculation. \
+                          But examine the orbitals first!"%(ibond+1))
                     alt=False
                     return pairs_list, alt
     return pairs_list, alt                   
   
 
 
-#Function to flip signs of orbital coeffs such that for every pair of bonding-antibonding orbitals, 
-#starred atoms retain their sign in antibonding orbital and unstarred atoms have opposite sign 
 def orb_sign(orbs,orb_energies,nelec,dist_array,alt):
+    '''
+    Adjusts orbital phases to satisfy alternant hydrocarbon symmetry.Ensures that starred atoms retain their sign 
+    across a pair, while unstarred atoms undergo a phase inversion in the antibonding orbital.
+
+    Args:
+        orbs (ndarray): Matrix of orbital coefficients (rows=atoms, cols=orbitals).
+        orb_energies (ndarray): Array of orbital energies.
+        nelec (int): Total number of electrons in the system.
+        dist_array (ndarray): Matrix of inter-atomic distances.
+        alt (bool): Alternacy status flag.
+
+    Returns:
+        orbs (ndarray): The orbital coefficient matrix with standardized phases.
+    '''
     if alt==True:
         print('\nGrouping orbitals according to alternacy symmetry...')
         ncarb = orbs.shape[0]
@@ -310,6 +431,25 @@ def orb_sign(orbs,orb_energies,nelec,dist_array,alt):
 
 #Function to form and return off-diagonal hopping contribution; use cutoff to determine nearest neighbors
 def t_term(dist_array,natoms_c,natoms_n,natoms,n_list,theta,params):
+    '''
+    Forms off-diagonal hopping contribution for PPP Hamiltonian, using cutoff to determine nearest neighbors.
+    
+    Args:
+    - dist_array (ndarray): 2D array of interatomic distances in Angstrom.
+    - natoms_c (int): Number of carbon atoms in the molecule.
+    - natoms_n (int): Number of nitrogen atoms in the molecule.
+    - natoms (int): Total number of heavy atoms in the molecule.
+    - n_list (list): List of nitrogen coordination indices (nbonds - 2).
+    - theta (dict): Dictionary of average dihedral angles for each bond in the molecule, 
+                    with keys as 'i-j' representing a bond between atoms i and j.
+    - params (list of lists): List of PPP parameter sets for carbon, nitrogen and chlorine atoms, 
+                              where each parameter set is a list containing values for A, b, alpha, U, r0 etc.
+    
+    Returns:
+    - array (ndarray): 2D array representing the off-diagonal hopping contribution to the PPP Hamiltonian, with shape (natoms, natoms). 
+                       Non-zero values correspond to hopping terms between atoms that are considered bonded based on the cutoff distance, 
+                       and are calculated using the provided parameters and dihedral angles where applicable.
+    '''
     A=params[0][0]
     b=params[0][1]
     alphan=params[1][0]
@@ -397,8 +537,22 @@ def t_term(dist_array,natoms_c,natoms_n,natoms,n_list,theta,params):
         print("Cl atom %d"%(i+1))
     return array
 
-#Function to form and return two-body repulsion (short and longe range) contribution
 def v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params):
+    '''
+    Forms two-body repulsion contribution for PPP Hamiltonian, with short and long range terms.
+    
+    Args:
+    - dist_array (ndarray): 2D array of interatomic distances in Angstrom.
+    - natoms_c (int): Number of carbon atoms in the molecule.
+    - natoms_n (int): Number of nitrogen atoms in the molecule.
+    - natoms (int): Total number of heavy atoms in the molecule.
+    - n_list (list): List of nitrogen coordination indices (nbonds - 2).
+    - params (list of lists): List of PPP parameter sets for carbon, nitrogen and chlorine atoms, 
+                              where each parameter set is a list containing values for A, b, alpha, U, r0 etc.
+    
+    Returns:
+    - array (ndarray): 2D array giving the repulsion contribution to the PPP Hamiltonian, with shape (natoms, natoms).
+    '''
     U=params[0][2]
     r0=params[0][3]
     Unn=params[1][3]
@@ -473,17 +627,43 @@ def v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params):
             array[j,i]=array[i,j]
         array[i,i]=Uclcl
     return array
-#Function to form and return density matrix (for doublet monoradical)
+
+
 def density(orbs,natoms,ndocc):
+    '''
+    Function to form and return density matrix (for doublet monoradical).
+    
+    Args:
+        - orbs (ndarray): 2D array of orbital coefficients (rows=atoms, cols=MOs).
+        - natoms (int): Total number of heavy atoms in the molecule.
+        - ndocc (int): Number of doubly-occupied MOs.
+    Returns:
+        - density: 2D array representing the density matrix of the system, with shape (natoms, natoms). 
+                   The density matrix is constructed by summing the contributions from the doubly occupied orbitals
+                   and the singly occupied molecular orbital (SOMO).
+    '''
     density=2*np.dot(orbs[:,:ndocc], orbs[:,:ndocc].T) #doubly occ orbs  
     #optimise this with einsum:
     for u in range(natoms):
         for v in range(natoms):
-            density[u,v] += orbs[u,ndocc]*orbs[v,ndocc] #somo 
+            density[u,v] += orbs[u,ndocc]*orbs[v,ndocc] # Adding density contribution from SOMO
     return density
 
-#Function to form and return open-shell Fock matrix
 def fock(repulsion,hopping,density,natoms_c,natoms_n,natoms,nlist):
+    '''
+    Function to form and return open-shell Fock matrix
+    
+    Args:
+        - repulsion (ndarray): 2D array representing the two-body repulsion integrals for the PPP Hamiltonian, with shape (natoms, natoms).
+        - hopping (ndarray): 2D array representing the one-body hopping integrals for the PPP Hamiltonian, with shape (natoms, natoms).
+        - density (ndarray): 2D array representing the density matrix of the system, with shape (natoms, natoms).
+        - natoms_c (int): Number of carbon atoms in the molecule.
+        - natoms_n (int): Number of nitrogen atoms in the molecule.
+        - natoms (int): Total number of heavy atoms in the molecule.
+        - nlist (list): List of nitrogen coordination indices (nbonds - 2).
+    Returns:
+        - fock_mat (ndarray): 2D array representing the open-shell Fock matrix of the system.
+    '''
     fock_mat=np.zeros_like(repulsion)
     for i in range (natoms):
         for j in range (i,natoms):
@@ -492,9 +672,10 @@ def fock(repulsion,hopping,density,natoms_c,natoms_n,natoms,nlist):
                 for k in range (natoms): 
                     mylist.append(k)
                 mylist.remove(i)
+                # Determining atom type
                 for n in mylist:
-                    if n>=natoms_c and n<natoms_c+natoms_n: #N atom
-                        zk = nlist[n-natoms_c]+1
+                    if n >= natoms_c and n < natoms_c + natoms_n: #N atom
+                        zk = nlist[n-natoms_c] + 1
                     elif n>=natoms_c+natoms_n: # Cl atom
                         zk=2
                     else: # Carbon
@@ -504,10 +685,20 @@ def fock(repulsion,hopping,density,natoms_c,natoms_n,natoms,nlist):
             else:
                 fock_mat[i,j]=-0.5*density[i,j]*repulsion[i,j]
                 fock_mat[j,i]=fock_mat[i,j]
-    fock_mat=fock_mat+hopping
+    fock_mat = fock_mat + hopping
     return fock_mat
 
 def compute_j00(orbs,repulsion,ndocc):
+    """Calculates the Coulomb self-repulsion integral (J00) for the SOMO.
+
+    Args:
+        orbs (ndarray): Matrix of orbital coefficients (rows=atoms, cols=orbitals).
+        repulsion (ndarray): Matrix of inter-atomic electron repulsion integrals.
+        ndocc (int): The number of doubly-occupied orbitals. Gives the appropriate index for the SOMO.
+
+    Returns:
+        J00 (float): The calculated Coulomb repulsion term for the SOMO.
+    """
     J00 = 0
     for l in range(orbs.shape[0]): # atom l
         for m in range(orbs.shape[0]): # atom m
@@ -516,35 +707,50 @@ def compute_j00(orbs,repulsion,ndocc):
 
 #Function to calculate open-shell SCF energy
 def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
+    """Calculates the total open-shell SCF energy.
+
+    Returns:
+        float: The total calculated SCF energy of the system.
+    """
     J00 = compute_j00(orbs,repulsion,ndocc)
-    return 0.5*(np.dot(density.flatten(),hopping.flatten())+np.dot(density.flatten(),fock_mat.flatten())) - 0.25*J00
+    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten())) - 0.25 * J00
 
 #Main HF function
-def main_scf(file,params):
+def main_scf(file, params, maxcycles=500, d_tol=1e-7):
+    '''
+    main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
+    
+    Args:
+        - file (str): The filename of the input geometry file for the radical molecule.
+        - params (dict): The dictionary of PPP parameters for Carbon, Nitrogen and Chlorine.
+        - maxcycles (int): The maximum number of SCF cycles to perform.
+        - d_tol (float): The convergence tolerance for the density matrix.
+        
+    '''
     print("                    ---------------------------------")
     print("                    | Radical ExROPPP Calculation |")
     print("                    ---------------------------------\n")
     print("Molecule: "+str(file)+" radical\n")
     #read in geometry and form distance matrix
     try:
-        coord,atoms_array,coord_w_h,natoms_c,natoms_n,natoms_cl,natoms=read_geom(file)
+        coord,atoms_array,coord_w_h,natoms_c,natoms_n,natoms_cl,natoms = read_geom(file)
     except FileNotFoundError:
         file = f'Molecules/{file}'
-        coord,atoms_array,coord_w_h,natoms_c,natoms_n,natoms_cl,natoms=read_geom(file)
-    dist_array=distance(coord)
-    n_list,atoms=ntype(coord_w_h,atoms_array,natoms_c,natoms_n)
-    nelec=natoms + sum(n_list) + natoms_cl #each pyrolle type N contributes 1 additional e-, so does Cl
+        coord,atoms_array,coord_w_h,natoms_c,natoms_n,natoms_cl,natoms = read_geom(file)
+    dist_array = distance(coord)
+    n_list,atoms = ntype(coord_w_h,atoms_array,natoms_c,natoms_n)
+    nelec = natoms + sum(n_list) + natoms_cl #each pyrolle type N contributes 1 additional e-, so does Cl
     ndocc = int((nelec-1)/2) # no. of doubly-occupied orbitals
     print("\nThere are %d heavy atoms."%natoms)
     print("There are %d electrons in %d orbitals.\n"%(nelec,natoms))
 #compute array of dihedral angles for given molecule (originaly used predefined dictionary of angles but now they are computed directly)
-    angles=dihedrals(natoms_c+natoms_n+natoms_cl,atoms_array,coord,dist_array)
+    angles = dihedrals(natoms_c+natoms_n+natoms_cl,atoms_array,coord,dist_array)
 #call functions to get 1/2-body "integrals"
-    hopping=t_term(dist_array,natoms_c,natoms_n,natoms,n_list,angles,params)
-    repulsion=v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params)
+    hopping = t_term(dist_array,natoms_c,natoms_n,natoms,n_list,angles,params)
+    repulsion = v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params)
 #Diagonalize Huckel Hamiltonian to form initial density guess
-    guess_evals,evecs=np.linalg.eigh(hopping)
-    guess_dens=density(evecs,natoms,ndocc)
+    guess_evals,evecs = np.linalg.eigh(hopping)
+    guess_dens = density(evecs,natoms,ndocc)
 #iterate until convergence 
     energy1=0
     print("\n-------------------------------------")
@@ -553,53 +759,47 @@ def main_scf(file,params):
     print("Starting SCF cycle...\n")
     print("Iter   Energy        Dens Change      Energy Change")
     print("-----------------------------------------------------")
-    for iter in range (501):
-        if iter==500:
-            print("\nEnergy not converged after 500 cycles")
+    for iter in range (maxcycles):
+        if iter == maxcycles-1:
+            print(f"\nEnergy not converged after {maxcycles} cycles")
             break
-        fock_mat=fock(repulsion,hopping,guess_dens,natoms_c,natoms_n,natoms,n_list)
-        evals,orbs=np.linalg.eigh(fock_mat)
-        dens=density(orbs,natoms,ndocc)
-        energy2=energy(hopping,repulsion,fock_mat,dens,orbs,ndocc)
-        conv_crit=np.absolute(guess_dens-dens).max()
-        print(iter, energy2, conv_crit,energy2-energy1)
-        cutoff=0.0000001
-        if conv_crit<cutoff:
+        fock_mat = fock(repulsion,hopping,guess_dens,natoms_c,natoms_n,natoms,n_list)
+        evals, orbs = np.linalg.eigh(fock_mat)
+        dens = density(orbs,natoms,ndocc)
+        energy2 = energy(hopping,repulsion,fock_mat,dens,orbs,ndocc)
+        conv_crit = np.absolute(guess_dens-dens).max()
+        print(iter, energy2, conv_crit, energy2 - energy1)
+        if conv_crit < d_tol:
             return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
-        if energy2>energy1:
+        if energy2 > energy1:
             print('\nEnergy rises!')
-        energy1=energy2
-        guess_dens=dens
+        energy1 = energy2
+        guess_dens = dens
 
-def transform(two_body,hf_orbs):
-        #fock_mat_mo=np.dot(hf_orbs.T,np.dot(fock_mat,hf_orbs))
-#place two-body terms into four index tensor----in site basis entire classes were zeroed out allowing storage in 2-D, 
-#but this does not carry over into MO basis so prepare for this here
-        two_body_4i=np.zeros((hf_orbs.shape[0],hf_orbs.shape[0],hf_orbs.shape[0],hf_orbs.shape[0]))
-        for i in range (hf_orbs.shape[0]):
-                for j in range (i,hf_orbs.shape[0]):
-                        two_body_4i[i,i,j,j]=two_body[i,j]
-                        two_body_4i[j,j,i,i]=two_body[i,j]
-#four index transformation
-        mat1=np.einsum("ij,klmi->klmj",hf_orbs,two_body_4i)
-        mat2=np.einsum("ij,klim->kljm",hf_orbs,mat1)
-        mat3=np.einsum("ij,kilm->kjlm",hf_orbs,mat2)
-        two_body_mo=np.einsum("ij,iklm->jklm",hf_orbs,mat3)
-        return two_body_mo
-def transform(two_body,hf_orbs):
-        #fock_mat_mo=np.dot(hf_orbs.T,np.dot(fock_mat,hf_orbs))
-#place two-body terms into four index tensor----in site basis entire classes were zeroed out allowing storage in 2-D, 
-#but this does not carry over into MO basis so prepare for this here
-        two_body_4i=np.zeros((hf_orbs.shape[0],hf_orbs.shape[0],hf_orbs.shape[0],hf_orbs.shape[0]))
-        for i in range (hf_orbs.shape[0]):
-                for j in range (i,hf_orbs.shape[0]):
-                        two_body_4i[i,i,j,j]=two_body[i,j]
-                        two_body_4i[j,j,i,i]=two_body[i,j]
-#four index transformation
-        two_body_mo = np.einsum("ia, jb, kc, ld, ijkl -> abcd",
+def transform(two_body, hf_orbs):
+    '''
+    Places two-body terms (V_ij) into a four-index tensor (ij|kl) and performs a four-index transformation to the molecular orbital basis.
+    
+    Args:
+        two_body: 2D array of two-body repulsion integrals in the atomic orbital basis. Usually repulsion array from v_term function. Shape (Natoms, Natoms)
+        hf_orbs: 2D array of Hartree-Fock orbital coefficients in the atomic orbital basis. Shape (Natoms, Natoms)
+    
+    Returns:
+        two_body_mo: 4D array of two-body repulsion integrals in the molecular orbital basis. Shape (Natoms, Natoms, Natoms, Natoms)
+    '''
+    Natoms = hf_orbs.shape[0]
+    two_body_4i = np.zeros((Natoms, Natoms, Natoms, Natoms))
+    for i in range (Natoms):
+            for j in range (i,Natoms):
+                    two_body_4i[i,i,j,j]=two_body[i,j]
+                    two_body_4i[j,j,i,i]=two_body[i,j]
+    #four index transformation
+    two_body_mo = np.einsum("ia, jb, kc, ld, ijkl -> abcd",
                              hf_orbs, hf_orbs, hf_orbs, hf_orbs, two_body_4i, optimize= 'optimal' )
-         
-        return two_body_mo
+    return two_body_mo
+    
+
+    
 def broaden(FWHM,osc,energy):
     if brdn_typ == 'wavelength' and line_typ == 'lorentzian':
         eqn="+%04.3f*1/(1+((%04.3f-x)/(%s/2))**2)" %(osc,evtonm/energy,FWHM)
@@ -629,6 +829,21 @@ def write_gnu(strng,file):
 
    
 def spin(ndocc,norbs,cis_coeffs,nstates,cis_option,hetero):
+    '''
+    Forms the S^2 matrix projected into the XCIS basis.
+    
+    Parameters:
+        ndocc (int): Number of doubly occupied orbitals in the system.
+        norbs (int): Total number of molecular orbitals in the system.
+        cis_coeffs (ndarray): 2D array of CIS coefficients for the excited states, with shape (nstates, ncis), where ncis is the number of configurations in the CIS expansion.
+        nstates (int): Number of excited states considered in the CIS calculation.
+        cis_option (str): String indicating the type of CIS calculation performed (e.g., 'cis' or 'cisd').
+        hetero (str): String indicating whether the molecule contains heteroatoms ('yes' or 'no').
+
+    Returns:
+        spinmat (ndarray): 2D array representing the S^2 matrix in the XCIS basis, with shape (nstates, nstates).
+        deltassq (int): Standard deviation for S^2 values in a pure doublet state, used for assessing spin contamination.
+    '''
     spinmat = np.zeros((nstates,nstates)) 
     if hetero=='no':
         #1 <0|S**2|0>
@@ -1282,14 +1497,25 @@ def dipole(coords,atoms,norbs,hforbs,ndocc,nstates,basis,cis_option,hetero):
 
 
 def cisd_ham_rot(ndocc,energy0,orb_energies,rep_tens):
-    o0 = ndocc# no. of doubly-occupied orbitals
-    nstates = 3*ndocc**2 +2*ndocc +1
-    cish = np.zeros((nstates,nstates))     
+    '''
+    Form the XCIS Hamiltonian matrix in the rotated CSF basis. 
+    Populates the off diagonals with various 2e- terms found in Table IX in SI for EXROPPP paper.
+    
+    Args:
+        ndocc (int): Number of doubly occupied orbitals.
+        energy0 (float): Ground state HF energy.
+        orb_energies (array): HF orbital energies.
+        rep_tens (array): 4D tensor giving two-electron repulsion integrals in the MO basis.
+    Returns:
+    '''
+    o0 = ndocc # Index of SOMO
+    nstates = 3 * ndocc ** 2 + 2 * ndocc + 1 # 3*ndocc^2 doubles, 2 * ndocc singles, 1 reference configuration
+    cish = np.zeros((nstates,nstates)) 
     #1 <0|H|0>
     cish[0,0] = energy0
     #2 <0|H|ibar->0bar> 
     for i in range (ndocc): 
-        cish[0,i+1] = 0.5*rep_tens[i,o0,o0,o0] #cish[0,i+1] = fock_mat_mo[i,o0] + 0.5*rep_tens[i,o0,o0,o0]
+        cish[0,i+1] = 0.5 * rep_tens[i,o0,o0,o0] #cish[0,i+1] = fock_mat_mo[i,o0] + 0.5*rep_tens[i,o0,o0,o0]
         cish[i+1,0] = cish[0,i+1]
     #3 <0|H|0->j'>
     for j in range (ndocc):
@@ -1445,6 +1671,21 @@ def cisd_ham_rot(ndocc,energy0,orb_energies,rep_tens):
     return cish
 
 def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file):
+    '''
+    Calculates monoradical excited states in rotated (CSF) basis using the CISD method. 
+    
+    Args:
+        ndocc (int): Number of doubly occupied orbitals
+        norbs (int): Total number of orbitals
+        coords (array): Array of atomic coordinates
+        atoms (array): Array of atomic symbols
+        energy0 (float): Ground state energy
+        repulsion (array): 2-electron repulsion integrals in AO basis
+        orb_energies (array): HF orbital energies
+        hf_orbs (array): HF molecular orbitals
+        file (str): Name of file to write output to (without extension)
+
+    '''
     with open(f'Excited_States/{file}_excitedstates.xyz','w') as out:
         print("")
         print("------------------------")
@@ -1813,7 +2054,7 @@ def hetero_cisd(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs,
         np.savetxt('big_ham_benz.csv', cis_ham_het, delimiter=',') 
         o0 = ndocc
         nunocc = norbs-ndocc-1
-        nstates = 3*ndocc*nunocc +ndocc+nunocc +1
+        nstates = 3 * ndocc * nunocc + ndocc + nunocc + 1
         if states_cutoff_option == 'states' and states_to_print <= nstates:
             rng = states_to_print
             print('Lowest %d states. WARNING - Some states may not be included in spectrum.\n'%states_to_print)
