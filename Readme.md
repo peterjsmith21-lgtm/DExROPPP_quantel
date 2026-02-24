@@ -97,5 +97,3 @@ This project is licensed under the creative commons CC-BY licence.
 Main code written by Joey Kielty was adapted from the original ExROPPP code written by Kevin Ma and James D. Green. 
 Initial PPP code adapted from initial closed-shell code of Timothy J. H. Hele and Eric G. Fuemmeler. 
 MO visualiser code written by Kevin Ma. 
-
-- Cite as: J. Chem. Phys. 160, 164110 (2024) and arXiv:2412.10149 [physics.chem-ph]
