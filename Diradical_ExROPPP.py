@@ -429,7 +429,6 @@ def orb_sign(orbs,orb_energies,nelec,dist_array,alt):
     return orbs
 
 
-#Function to form and return off-diagonal hopping contribution; use cutoff to determine nearest neighbors
 def t_term(dist_array,natoms_c,natoms_n,natoms,n_list,theta,params):
     '''
     Forms off-diagonal hopping contribution for PPP Hamiltonian, using cutoff to determine nearest neighbors.
@@ -629,25 +628,23 @@ def v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params):
     return array
 
 
-def density(orbs,natoms,ndocc):
+def density(orbs, ndocc):
     '''
-    Function to form and return density matrix (for doublet monoradical).
+    Function to form and return density matrix for diradicals.
     
     Args:
         - orbs (ndarray): 2D array of orbital coefficients (rows=atoms, cols=MOs).
-        - natoms (int): Total number of heavy atoms in the molecule.
         - ndocc (int): Number of doubly-occupied MOs.
     Returns:
         - density: 2D array representing the density matrix of the system, with shape (natoms, natoms). 
-                   The density matrix is constructed by summing the contributions from the doubly occupied orbitals
-                   and the singly occupied molecular orbital (SOMO).
+                   The density matrix is constructed by summing the contributions from the doubly occupied orbitals twice and
+                   once from the singly occupied molecular orbitals (SOMOs).
     '''
-    density=2*np.dot(orbs[:,:ndocc], orbs[:,:ndocc].T) #doubly occ orbs  
-    #optimise this with einsum:
-    for u in range(natoms):
-        for v in range(natoms):
-            density[u,v] += orbs[u,ndocc]*orbs[v,ndocc] # Adding density contribution from SOMO
+    prefactor_matrix = np.diag((np.full(ndocc + 2, 2)))
+    prefactor_matrix[[ndocc, ndocc + 1], [ndocc, ndocc + 1]] = 1 # SOMOs are not multiplied by 1 rather than 2.
+    density = orbs[:,:ndocc] @ (prefactor_matrix @ orbs[:,:ndocc].T) # P = C_occ *  Prefactor * C_occ^T  
     return density
+
 
 def fock(repulsion,hopping,density,natoms_c,natoms_n,natoms,nlist):
     '''
@@ -667,24 +664,22 @@ def fock(repulsion,hopping,density,natoms_c,natoms_n,natoms,nlist):
     fock_mat=np.zeros_like(repulsion)
     for i in range (natoms):
         for j in range (i,natoms):
-            if i==j:
-                mylist=[]
-                for k in range (natoms): 
-                    mylist.append(k)
+            if i == j:
+                mylist = list(range(natoms))
                 mylist.remove(i)
                 # Determining atom type
-                for n in mylist:
-                    if n >= natoms_c and n < natoms_c + natoms_n: #N atom
-                        zk = nlist[n-natoms_c] + 1
-                    elif n>=natoms_c+natoms_n: # Cl atom
-                        zk=2
+                for atom in mylist:
+                    if atom >= natoms_c and atom < natoms_c + natoms_n: # N atom
+                        zk = nlist[atom - natoms_c] + 1
+                    elif atom >= natoms_c + natoms_n: # Cl atom
+                        zk = 2
                     else: # Carbon
-                        zk=1
-                    fock_mat[i,j] += (density[n,n]-zk)*repulsion[i,n]
-                fock_mat[i,j] += 0.5*density[i,j]*repulsion[i,j]
+                        zk = 1
+                    fock_mat[i,j] += (density[atom,atom] - zk) * repulsion[i,atom] # Contribution to electron energy on given atom from electrons on other atoms
+                fock_mat[i,j] += 0.5 * density[i,j] * repulsion[i,j] # Self-interaction energy for electron energy on given atom
             else:
-                fock_mat[i,j]=-0.5*density[i,j]*repulsion[i,j]
-                fock_mat[j,i]=fock_mat[i,j]
+                fock_mat[i,j] = -0.5 * density[i,j] * repulsion[i,j] # Exchange contribution for electrons on different atoms
+                fock_mat[j,i] = fock_mat[i,j]
     fock_mat = fock_mat + hopping
     return fock_mat
 
