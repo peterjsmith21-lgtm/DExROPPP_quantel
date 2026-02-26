@@ -25,8 +25,6 @@ from ExROPPP_settings_opt import *
 
 
 
-
-
 def read_geom(file):
     '''
     Read molecular geometry from file and returns various arrays and integers.
@@ -102,6 +100,7 @@ def read_geom(file):
         array_all = np.concatenate((array,array_h))
     atoms=atoms_c+atoms_n+atoms_cl+atoms_h
     natoms = natoms_c+natoms_n+natoms_cl
+    
     return array, atoms, array_all, natoms_c, natoms_n, natoms_cl, natoms
 
 
@@ -642,7 +641,7 @@ def density(orbs, ndocc):
     '''
     prefactor_matrix = np.diag((np.full(ndocc + 2, 2)))
     prefactor_matrix[[ndocc, ndocc + 1], [ndocc, ndocc + 1]] = 1 # SOMOs are not multiplied by 1 rather than 2.
-    density = orbs[:,:ndocc] @ (prefactor_matrix @ orbs[:,:ndocc].T) # P = C_occ *  Prefactor * C_occ^T  
+    density = orbs[:,:ndocc + 2] @ (prefactor_matrix @ orbs[:,:ndocc + 2].T) # P = C_occ *  Prefactor * C_occ^T  
     return density
 
 
@@ -684,31 +683,51 @@ def fock(repulsion,hopping,density,natoms_c,natoms_n,natoms,nlist):
     return fock_mat
 
 def compute_j00(orbs,repulsion,ndocc):
-    """Calculates the Coulomb self-repulsion integral (J00) for the SOMO.
+    """Calculates the Coulomb self-repulsion integral (J00) for both of the SOMOs.
 
     Args:
         orbs (ndarray): Matrix of orbital coefficients (rows=atoms, cols=orbitals).
         repulsion (ndarray): Matrix of inter-atomic electron repulsion integrals.
-        ndocc (int): The number of doubly-occupied orbitals. Gives the appropriate index for the SOMO.
+        ndocc (int): The number of doubly-occupied orbitals. Gives the appropriate index for the first SOMO.
 
     Returns:
-        J00 (float): The calculated Coulomb repulsion term for the SOMO.
+        J00 (float): The calculated Coulomb repulsion term for both of the SOMOs.
     """
     J00 = 0
     for l in range(orbs.shape[0]): # atom l
         for m in range(orbs.shape[0]): # atom m
-            J00 += orbs[l,ndocc]**2 * orbs[m,ndocc]**2 * repulsion[l,m]
+            J00 += (orbs[l,ndocc]**2 * orbs[m,ndocc]**2 + orbs[l,ndocc+1]**2 * orbs[m,ndocc+1]**2) * repulsion[l,m]
     return J00
 
-#Function to calculate open-shell SCF energy
-def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
-    """Calculates the total open-shell SCF energy.
+def compute_k00(orbs,repulsion,ndocc):
+    """Calculates the Exchange interaction between the SOMOs (K00').
+
+    Args:
+        orbs (ndarray): Matrix of orbital coefficients (rows=atoms, cols=orbitals).
+        repulsion (ndarray): Matrix of inter-atomic electron repulsion integrals.
+        ndocc (int): The number of doubly-occupied orbitals. Gives the appropriate index for the first SOMO.
 
     Returns:
-        float: The total calculated SCF energy of the system.
+        K00 (float): The calculated Exchange interaction term for both of the SOMOs.
+    """
+    K00 = 0
+    for l in range(orbs.shape[0]): # atom l
+        for m in range(orbs.shape[0]): # atom m
+            K00 += (orbs[l,ndocc] * orbs[l,ndocc+1]) * (orbs[m,ndocc] * orbs[m,ndocc+1]) * repulsion[l,m]
+    return K00
+
+
+def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
+    """Calculates the total SCF energy of the ground state triplet state. This is usually expected to be the ground state but it can 
+       sometimes be the open shell singlet.
+
+    Returns:
+        float: The total calculated SCF energy of the system from PPP theory.
     """
     J00 = compute_j00(orbs,repulsion,ndocc)
-    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten())) - 0.25 * J00
+    K00 = compute_k00(orbs,repulsion,ndocc)
+    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten())) - 0.25 * J00 - 0.5 * K00 
+
 
 #Main HF function
 def main_scf(file, params, maxcycles=500, d_tol=1e-7):
@@ -745,7 +764,7 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-7):
     repulsion = v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params)
 #Diagonalize Huckel Hamiltonian to form initial density guess
     guess_evals,evecs = np.linalg.eigh(hopping)
-    guess_dens = density(evecs,natoms,ndocc)
+    guess_dens = density(evecs,ndocc)
 #iterate until convergence 
     energy1=0
     print("\n-------------------------------------")
@@ -760,7 +779,7 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-7):
             break
         fock_mat = fock(repulsion,hopping,guess_dens,natoms_c,natoms_n,natoms,n_list)
         evals, orbs = np.linalg.eigh(fock_mat)
-        dens = density(orbs,natoms,ndocc)
+        dens = density(orbs,ndocc)
         energy2 = energy(hopping,repulsion,fock_mat,dens,orbs,ndocc)
         conv_crit = np.absolute(guess_dens-dens).max()
         print(iter, energy2, conv_crit, energy2 - energy1)
@@ -770,6 +789,8 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-7):
             print('\nEnergy rises!')
         energy1 = energy2
         guess_dens = dens
+
+
 
 def transform(two_body, hf_orbs):
     '''
@@ -1493,8 +1514,9 @@ def dipole(coords,atoms,norbs,hforbs,ndocc,nstates,basis,cis_option,hetero):
 
 def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
     '''
-    Form the XCIS Hamiltonian matrix in the rotated CSF basis. 
-    Populates the off diagonals with various 2e- terms found in Table IX in SI for EXROPPP paper.
+    Form the XCIS Hamiltonian matrix in the rotated CSF basis.
+    Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
+    Note that the Hamiltonian basis is given in the working doc, i.e the ordering of CSFs.
     
     Args:
         ndocc (int): Number of doubly occupied orbitals.
@@ -1503,18 +1525,19 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
         rep_tens (array): 4D tensor giving two-electron repulsion integrals in the MO basis.
     Returns:
     '''
-    o0 = ndocc # Index of SOMO
-    nstates = 3 * ndocc ** 2 + 2 * ndocc + 1 # 3 * ndocc^2 doubles, 2 * ndocc singles, 1 reference configuration
+    SOMO1 = ndocc # Index of SOMO1
+    SOMO2 = ndocc + 1 # Index of SOMO2
+    nstates = 6 * ndocc ** 2 + 4 * ndocc + 4 # 6 * ndocc^2 doubles (HOMO to LUMO), 8 * ndocc singles (HOMO to SOMO and SOMO to LUMO), 4 reference configurations (OS GSs and Zwitterions)
     cish = np.zeros((nstates,nstates)) 
     #1 <0|H|0>
     cish[0,0] = energy0
     #2 <0|H|ibar->0bar> 
     for i in range (ndocc): 
-        cish[0,i+1] = 0.5 * rep_tens[i,o0,o0,o0] #cish[0,i+1] = fock_mat_mo[i,o0] + 0.5*rep_tens[i,o0,o0,o0]
+        cish[0,i+1] = 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1] #cish[0,i+1] = fock_mat_mo[i,o0] + 0.5*rep_tens[i,o0,o0,o0]
         cish[i+1,0] = cish[0,i+1]
     #3 <0|H|0->j'>
     for j in range (ndocc):
-        cish[0,j+ndocc+1] = -0.5*rep_tens[o0,j+ndocc+1,o0,o0] #cish[0,j+ndocc+1] = fock_mat_mo[o0,j+ndocc+1] - 0.5*rep_tens[o0,j+ndocc+1,o0,o0]
+        cish[0,j+ndocc+1] = -0.5*rep_tens[SOMO1,j+ndocc+1,SOMO1,SOMO1] #cish[0,j+ndocc+1] = fock_mat_mo[o0,j+ndocc+1] - 0.5*rep_tens[o0,j+ndocc+1,o0,o0]
         cish[j+ndocc+1,0] = cish[0,j+ndocc+1]
     #4 <0|H|Q i->j'> ALL ZERO
     
@@ -1667,7 +1690,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
 
 def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file):
     '''
-    Calculates monoradical excited states in rotated (CSF) basis using the CISD method. 
+    Calculates monoradical excited states in rotated (CSF) basis using the CISD method. Used for molecules without Nitrogen or Chlorine present.
     
     Args:
         ndocc (int): Number of doubly occupied orbitals
@@ -2649,9 +2672,7 @@ def rad_calc(file,params):
                 print("\nDensity Matrix:")
                 print(dens_mo)
                 sys.exit()
-    if sum(n_list)==0 and natoms_cl==0:
-        #strng,ci_energies_array,osc_array = cis(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,'cis')  
-        #strng,ci_energies_array,osc_array = cis(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,'cisd')  
+    if sum(n_list)==0 and natoms_cl==0: 
         strng,ci_energies_array,osc_array,s2_array= cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
     else:
         strng,ci_energies_array,osc_array,s2_array = hetero_cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)

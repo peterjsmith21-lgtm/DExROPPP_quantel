@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.linalg as linalg
 from ExROPPP_settings_opt import *
+import sys
 
 
 
@@ -79,6 +80,7 @@ def read_geom(file):
         array_all = np.concatenate((array,array_h))
     atoms=atoms_c+atoms_n+atoms_cl+atoms_h
     natoms = natoms_c+natoms_n+natoms_cl
+    
     return array, atoms, array_all, natoms_c, natoms_n, natoms_cl, natoms
 
 
@@ -619,7 +621,7 @@ def density(orbs, ndocc):
     '''
     prefactor_matrix = np.diag((np.full(ndocc + 2, 2)))
     prefactor_matrix[[ndocc, ndocc + 1], [ndocc, ndocc + 1]] = 1 # SOMOs are not multiplied by 1 rather than 2.
-    density = orbs[:,:ndocc] @ (prefactor_matrix @ orbs[:,:ndocc].T) # P = C_occ *  Prefactor * C_occ^T  
+    density = orbs[:,:ndocc + 2] @ (prefactor_matrix @ orbs[:,:ndocc + 2].T) # P = C_occ *  Prefactor * C_occ^T  
     return density
 
 
@@ -660,32 +662,52 @@ def fock(repulsion,hopping,density,natoms_c,natoms_n,natoms,nlist):
     fock_mat = fock_mat + hopping
     return fock_mat
 
+
 def compute_j00(orbs,repulsion,ndocc):
-    """Calculates the Coulomb self-repulsion integral (J00) for the SOMO.
+    """Calculates the Coulomb self-repulsion integral (J00) for both of the SOMOs.
 
     Args:
         orbs (ndarray): Matrix of orbital coefficients (rows=atoms, cols=orbitals).
         repulsion (ndarray): Matrix of inter-atomic electron repulsion integrals.
-        ndocc (int): The number of doubly-occupied orbitals. Gives the appropriate index for the SOMO.
+        ndocc (int): The number of doubly-occupied orbitals. Gives the appropriate index for the first SOMO.
 
     Returns:
-        J00 (float): The calculated Coulomb repulsion term for the SOMO.
+        J00 (float): The calculated Coulomb repulsion term for both of the SOMOs.
     """
     J00 = 0
     for l in range(orbs.shape[0]): # atom l
         for m in range(orbs.shape[0]): # atom m
-            J00 += orbs[l,ndocc]**2 * orbs[m,ndocc]**2 * repulsion[l,m]
+            J00 += (orbs[l,ndocc]**2 * orbs[m,ndocc]**2 + orbs[l,ndocc+1]**2 * orbs[m,ndocc+1]**2) * repulsion[l,m]
     return J00
 
-#Function to calculate open-shell SCF energy
-def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
-    """Calculates the total open-shell SCF energy.
+def compute_k00(orbs,repulsion,ndocc):
+    """Calculates the Exchange interaction between the SOMOs (K00').
+
+    Args:
+        orbs (ndarray): Matrix of orbital coefficients (rows=atoms, cols=orbitals).
+        repulsion (ndarray): Matrix of inter-atomic electron repulsion integrals.
+        ndocc (int): The number of doubly-occupied orbitals. Gives the appropriate index for the first SOMO.
 
     Returns:
-        float: The total calculated SCF energy of the system.
+        K00 (float): The calculated Exchange interaction term for both of the SOMOs.
+    """
+    K00 = 0
+    for l in range(orbs.shape[0]): # atom l
+        for m in range(orbs.shape[0]): # atom m
+            K00 += (orbs[l,ndocc] * orbs[l,ndocc+1]) * (orbs[m,ndocc] * orbs[m,ndocc+1]) * repulsion[l,m]
+    return K00
+
+
+def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
+    """Calculates the total SCF energy of the ground state triplet state. This is usually expected to be the ground state but it can 
+       sometimes be the open shell singlet.
+
+    Returns:
+        float: The total calculated SCF energy of the system from PPP theory.
     """
     J00 = compute_j00(orbs,repulsion,ndocc)
-    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten())) - 0.25 * J00
+    K00 = compute_k00(orbs,repulsion,ndocc)
+    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten())) - 0.25 * J00 - 0.5 * K00 
 
 #Main HF function
 def main_scf(file, params, maxcycles=500, d_tol=1e-7):
@@ -722,7 +744,7 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-7):
     repulsion = v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params)
 #Diagonalize Huckel Hamiltonian to form initial density guess
     guess_evals,evecs = np.linalg.eigh(hopping)
-    guess_dens = density(evecs,natoms,ndocc)
+    guess_dens = density(evecs,ndocc)
 #iterate until convergence 
     energy1=0
     print("\n-------------------------------------")
@@ -737,15 +759,182 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-7):
             break
         fock_mat = fock(repulsion,hopping,guess_dens,natoms_c,natoms_n,natoms,n_list)
         evals, orbs = np.linalg.eigh(fock_mat)
-        dens = density(orbs,natoms,ndocc)
+        dens = density(orbs,ndocc)
         energy2 = energy(hopping,repulsion,fock_mat,dens,orbs,ndocc)
         conv_crit = np.absolute(guess_dens-dens).max()
         print(iter, energy2, conv_crit, energy2 - energy1)
         if conv_crit < d_tol:
-            return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
+            print(f"\nEnergy converged after {iter+1} cycles\n")
+            break
         if energy2 > energy1:
             print('\nEnergy rises!')
         energy1 = energy2
         guess_dens = dens
-
     
+    hf_orbs = orb_sign(orbs,evals,nelec,dist_array,alt)
+    print("\n--------------------------")
+    print("Converged ROPPP Orbitals")
+    print("--------------------------\n")
+    natoms=np.shape(coord)[0]
+    for iorb in range(natoms):
+        print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
+        print(np.around(hf_orbs[:, iorb], decimals=2))
+
+    atomic_numbers=[]
+    for atom in atoms_array:
+        number={"C":6.0,"c":6.0,"H":1.0,"h":1.0,"N":7.0,"n":7.0,"N1":7.0,"n1":7.0,"N2":7.0,"n2":7.0,"Cl":17.0,"cl":17.0,"CL":17.0}[atom[0]]
+        atomic_numbers.append([atom[0],number])
+    f=open('Converged_orbitals/%s.out'%file,'w')
+    f.write("\n")
+    f.write("\nGAMESS COORDINATES FORMAT")
+    f.write("\n")
+    f.write("\n ATOM      ATOMIC                      COORDINATES (BOHR)")
+    f.write("\n           CHARGE         X                   Y                   Z")
+    #for i,atom in enumerate(atoms_array):
+    for i in range(natoms_c+natoms_n+natoms_cl):
+        f.write("\n %s           %d     %f            %f            %f"%(atoms_array[i][0],atomic_numbers[i][1],coord[i,0]*tobohr,coord[i,1]*tobohr,coord[i,2]*tobohr))
+    f.write("\n                      ")
+    f.write("\n     ATOMIC BASIS SET")
+    f.write("\n     ----------------")
+    f.write("\n ")
+    f.write("\n ")
+    f.write("\n ")
+    f.write("\n  SHELL TYPE  PRIMITIVE        EXPONENT          CONTRACTION COEFFICIENT(S)")
+    f.write("\n ")
+    n1=1
+    n2=1
+    for i,atom in enumerate(atoms_array):
+        if atom[0] == 'C':
+            f.write("\n C         ")
+            f.write("\n ")
+            f.write("\n     %2s   S     %3s            27.3850330    0.430128498301"%(str(n1+i),str(n2+i)))
+            f.write("\n     %2s   S     %3s             4.8745221    0.678913530502"%(str(n1+i),str(n2+i+1)))
+            f.write("\n ")
+            f.write("\n     %2s   L     %3s             1.1367482    0.049471769201    0.511540707616"%(str(n1+i+1),str(n2+i+2)))
+            f.write("\n     %2s   L     %3s             0.2883094    0.963782408119    0.612819896119"%(str(n1+i+1),str(n2+i+3)))
+            f.write("\n ")
+            n1+=1
+            n2+=3
+        if atom[0] in ['N','N1','N2']:
+            f.write("\n N         ")
+            f.write("\n ")
+            f.write("\n     %2s   S     %3s            27.3850330    0.430128498301"%(str(n1+i),str(n2+i)))
+            f.write("\n     %2s   S     %3s             4.8745221    0.678913530502"%(str(n1+i),str(n2+i+1)))
+            f.write("\n ")
+            f.write("\n     %2s   L     %3s             1.1367482    0.049471769201    0.511540707616"%(str(n1+i+1),str(n2+i+2)))
+            f.write("\n     %2s   L     %3s             0.2883094    0.963782408119    0.612819896119"%(str(n1+i+1),str(n2+i+3)))
+            f.write("\n ")
+            n1+=1
+            n2+=3
+        if atom[0] == 'Cl':
+            f.write("\n Cl         ")
+            f.write("\n ")
+            f.write("\n     %2s   S     %3s           229.9441039    0.430128498301"%(n1+i,n2+i))
+            f.write("\n     %2s   S     %3s            40.9299346    0.678913530502"%(n1+i,n2+i+1))
+            f.write("\n ")
+            f.write("\n     %2s   L     %3s            15.0576101    0.049471769201    0.511540707616"%(str(n1+i+1),str(n2+i+2)))
+            f.write("\n     %2s   L     %3s             3.8190075    0.963782408119    0.612819896119"%(str(n1+i+1),str(n2+i+3)))
+            f.write("\n ")
+            f.write("\n     %2s   L     %3s             0.8883464   -0.298398604487    0.348047191182"%(str(n1+i+2),str(n2+i+4)))
+            f.write("\n     %2s   L     %3s             0.3047828    1.227982887359    0.722252322062"%(str(n1+i+2),str(n2+i+5)))
+            n1+=2
+            n2+=5
+        f.write("\n ")  
+    for imo in range(hf_orbs.shape[0]):
+        f.write("\n ")
+        f.write("\n          ------------")
+        f.write("\n          EIGENVECTORS")
+        f.write("\n          ------------")
+        f.write("\n ")
+        f.write("\n                      %s    "%str(imo+1))
+        f.write("\n                   %4f "%(evals[imo]-evals[int((nelec-1)/2)]))
+        f.write("\n                     A     ")# symmetry (A is default for c1)
+        kao=1
+        for jatom, atom in enumerate(atoms_array):
+            if atom[0]=='C':
+                if file=='allyl' or file=='benzyl':
+                    f.write("\n  %3s  C %2s  S    0.000000  "%(str(kao),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
+                    #f.write("\n  %3s  C %2s  X    %6f"%(str(kao+2),str(jatom+1),hf_orbs[jatom,imo]))
+                    #f.write("\n  %3s  C %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
+                    #f.write("\n  %3s  C %2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  Y    %6f"%(str(kao+3),str(jatom+1),hf_orbs[jatom,imo]))
+                    #f.write("\n  %3s  C %2s  Z    %6f"%(str(kao+4),str(jatom+1),hf_orbs[jatom,imo]))
+                    f.write("\n  %3s  C %2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
+                    kao+=5
+                elif file=='dpm' or file=='dpxm' or file=='pdxm':
+                    f.write("\n  %3s  C %2s  S    0.000000  "%(str(kao),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  X    %6f"%(str(kao+2),str(jatom+1),hf_orbs[jatom,imo]))
+                    f.write("\n  %3s  C %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
+                    kao+=5
+                else:
+                    f.write("\n  %3s  C %2s  S    0.000000  "%(str(kao),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
+                    f.write("\n  %3s  C %2s  Z    %6f"%(str(kao+4),str(jatom+1),hf_orbs[jatom,imo]))
+                    kao+=5
+            if atom[0] in ['N','N1','N2']:
+                f.write("\n  %3s  N %2s  S    0.000000  "%(str(kao),str(jatom+1)))
+                f.write("\n  %3s  N %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
+                f.write("\n  %3s  N %2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
+                f.write("\n  %3s  N %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
+                f.write("\n  %3s  N %2s  Z    %6f"%(str(kao+4),str(jatom+1),hf_orbs[jatom,imo]))
+                kao+=5
+            if atom[0]=='Cl':
+                f.write("\n  %3s  Cl%2s  S    0.000000  "%(str(kao),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  S    0.000000  "%(str(kao+1),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  S    0.000000  "%(str(kao+5),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  X    0.000000  "%(str(kao+6),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  Y    0.000000  "%(str(kao+7),str(jatom+1)))
+                f.write("\n  %3s  Cl%2s  Z    %6f"%(str(kao+8),str(jatom+1),hf_orbs[jatom,imo]))
+                kao+=9
+        f.write("\n  ...... END OF ROHF CALCULATION ......")
+    f.write("\n ")
+    f.close()
+    # check that fock matrix is diagonalized
+    fock_mo = np.dot(hf_orbs.T,np.dot(fock_mat,hf_orbs))
+    for i in range(fock_mo.shape[0]):
+        for j in range(fock_mo.shape[0]):
+            if i!=j and fock_mo[i,j] > 1e-4:
+                print("Fock matrix not converged!")
+                print("\nFock Matrix:")
+                print(fock_mo)
+                sys.exit()
+    # check the density matrix
+    dens_mat=density(hf_orbs,ndocc)
+    dens_mo = np.dot(hf_orbs.T,np.dot(dens_mat,hf_orbs))
+    print('\nOrbital occupation numbers:')
+    for i in range(dens_mo.shape[0]):
+        print("%d: %f"%(i+1,dens_mo[i,i]))
+        for j in range(dens_mo.shape[0]):
+            if i!=j and fock_mo[i,j] > 1e-4:
+                print("Density matrix not converged!")
+                print("\nDensity Matrix:")
+                print(dens_mo)
+                sys.exit()
+        
+    return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
+
+
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('geometry', type = str, help = 'file containing geometry')
+    args = parser.parse_args()
+    optimized_geometry = args.geometry
+    
+    params = [[-22.71707507,   1.70561621 ,  8.42083845  , 1.17315691 ,  0.        ],
+              [ -3.486745 ,  -25.23133814 ,  1.76801716,  12.80518166  , 1.20074375],
+              [-17.68133786, -24.73720244 ,  1.43363853 , 17.97984271 ,  1.11179102],
+              [-10.33567426, -26.02193733 ,  1.45186057 ,  9.64299129 ,  2.25331612]]
+
+    main_scf(file=optimized_geometry, params=params)
