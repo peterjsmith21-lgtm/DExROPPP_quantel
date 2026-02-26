@@ -861,10 +861,49 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
     #8 - 13 are triplet states so have 0 interaction.
     
     # 14 <ZW0|H|ZW0>
-    cish[1,1] = energy0 + 0.5 * (rep
+    cish[1,1] = energy0 # UNFINISHED...
+    #15 <ZW0|H|ZW0'>
+    cish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
+    cish[2,1] = cish[1,2]
+    #16 <ZW0|H|HS1>
+    for i in range(3, ndocc + 3):
+        cish[1,i+1] = (2 ** 0.5) * (rep_tens[i,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO2])
+        cish[i+1,1] = cish[1,i+1]
+    #17 <ZW0|H|HS2>
+    for i in range(ndocc + 3, 2*ndocc + 3):
+        cish[1,i+1] = (2 ** 0.5) * rep_tens[i,SOMO2,SOMO2,SOMO1]
+        cish[i+1,1] = cish[1,i+1]
+    #18 <ZW0|H|SL1>
+    for j in range(2*ndocc + 3, 3*ndocc + 3):
+        cish[1,j+1] = (2 ** 0.5) * (0.5 * rep_tens[j,SOMO1,SOMO1,SOMO1] + 0.5 * rep_tens[j,SOMO2,SOMO2,SOMO1] - rep_tens[j,SOMO1,SOMO2,SOMO2])
+        cish[j+1,1] = cish[1,j+1]
+    #19 <ZW0|H|SL2>
+    for j in range(3*ndocc + 3, 4*ndocc + 3):
+        cish[1,j+1] = (2 ** 0.5) * rep_tens[j,SOMO1,SOMO1,SOMO2]
+        cish[j+1,1] = cish[1,j+1]
+    #19 - 24 are triplet states so have 0 interaction.
     
-    
-    
+    #25 <ZW0'|H|ZW0'>
+    cish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
+    cish[2,1] = cish[1,2]
+    #26 <ZW0'|H|HS1>
+    for i in range(3, ndocc + 3):
+        cish[1,i+1] = (2 ** 0.5) * rep_tens[i,SOMO1,SOMO1,SOMO2]
+        cish[i+1,1] = cish[1,i+1]
+    #27 <ZW0'|H|HS2>
+    for i in range(ndocc + 3, 2*ndocc + 3):
+        cish[1,i+1] = (2 ** 0.5) * (rep_tens[i,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1])
+        cish[i+1,1] = cish[1,i+1]
+    #28 <ZW0'|H|SL1>
+    for j in range(2*ndocc + 3, 3*ndocc + 3):
+        cish[1,j+1] = (2 ** 0.5) * rep_tens[j,SOMO2,SOMO2,SOMO1]
+        cish[j+1,1] = cish[1,j+1]
+    #29 <ZW0'|H|SL2>
+    for j in range(3*ndocc + 3, 4*ndocc + 3):
+        cish[1,j+1] = (2 ** 0.5) * (0.5 * rep_tens[j,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[j,SOMO1,SOMO1,SOMO2] - rep_tens[j,SOMO2,SOMO1,SOMO1])
+        cish[j+1,1] = cish[1,j+1]
+    #30 - 35 are triplet states so have 0 interaction.
+
     return cish
     
 
