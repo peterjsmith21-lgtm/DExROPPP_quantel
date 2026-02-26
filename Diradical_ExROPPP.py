@@ -825,7 +825,7 @@ def write_gnu(strng,file):
    
 def spin(ndocc,norbs,cis_coeffs,nstates,cis_option,hetero):
     '''
-    Forms the S^2 matrix projected into the XCIS basis.
+    Forms the S^2 matrix projected into the XCIS basis by first .
     
     Parameters:
         ndocc (int): Number of doubly occupied orbitals in the system.
@@ -1491,7 +1491,7 @@ def dipole(coords,atoms,norbs,hforbs,ndocc,nstates,basis,cis_option,hetero):
 
 
 
-def cisd_ham_rot(ndocc,energy0,orb_energies,rep_tens):
+def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
     '''
     Form the XCIS Hamiltonian matrix in the rotated CSF basis. 
     Populates the off diagonals with various 2e- terms found in Table IX in SI for EXROPPP paper.
@@ -1504,7 +1504,7 @@ def cisd_ham_rot(ndocc,energy0,orb_energies,rep_tens):
     Returns:
     '''
     o0 = ndocc # Index of SOMO
-    nstates = 3 * ndocc ** 2 + 2 * ndocc + 1 # 3*ndocc^2 doubles, 2 * ndocc singles, 1 reference configuration
+    nstates = 3 * ndocc ** 2 + 2 * ndocc + 1 # 3 * ndocc^2 doubles, 2 * ndocc singles, 1 reference configuration
     cish = np.zeros((nstates,nstates)) 
     #1 <0|H|0>
     cish[0,0] = energy0
