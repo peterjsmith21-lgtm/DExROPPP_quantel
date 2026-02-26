@@ -813,6 +813,59 @@ def transform(two_body, hf_orbs):
     two_body_mo = np.einsum("ia, jb, kc, ld, ijkl -> abcd",
                              hf_orbs, hf_orbs, hf_orbs, hf_orbs, two_body_4i, optimize= 'optimal' )
     return two_body_mo
+
+
+
+def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
+    '''
+    Form the XCIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
+    Note that the Hamiltonian basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, then the quintet,
+    making the Hamiltonian block diagonal with respect to spin.
+    
+    Args:
+        ndocc (int): Number of doubly occupied orbitals.
+        energy0 (float): Ground state HF energy.
+        orb_energies (array): HF orbital energies.
+        rep_tens (array): 4D tensor giving two-electron repulsion integrals in the MO basis.
+    Returns:
+    '''
+    SOMO1 = ndocc # Index of SOMO1
+    SOMO2 = ndocc + 1 # Index of SOMO2
+    # nstates = 6 * ndocc ** 2 + 4 * ndocc + 4  # 6 * ndocc^2 doubles (HOMO to LUMO), 8 * ndocc singles (HOMO to SOMO and SOMO to LUMO), 4 reference configurations (OS GSs and Zwitterions)
+    nstates = 8 * ndocc + 4 # Ignoring HOMO to LUMO (double) excitations for the time being
+    cish = np.zeros((nstates,nstates)) 
+    #1 <OS1|H|OS1>
+    cish[0,0] = energy0 + (1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]) # Adding extra exchange energy for singlet GS
+    #2 <OS1|H|ZW0>
+    cish[0,1] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
+    cish[1,0] = cish[0,1]
+    #3 <OS1|H|ZW0'>
+    cish[0,2] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
+    cish[2,0] = cish[0,2]
+    #4 <OS1|H|HS1> 
+    for i in range(3, ndocc + 3):
+        cish[0,i+1] = 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1] - 1.5 * rep_tens[i,SOMO2,SOMO2,SOMO1]
+        cish[i+1,0] = cish[0,i+1]
+    #5 <OS1|H|HS2> 
+    for i in range(ndocc + 3, 2*ndocc + 3):
+        cish[0,i+1] = 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[i,SOMO1,SOMO1,SOMO2]
+        cish[i+1,0] = cish[0,i+1]
+    #6 <OS1|H|SL1>
+    for j in range(2*ndocc + 3, 3*ndocc + 3):
+        cish[0,j+1] = 1.5 * rep_tens[j,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[j,SOMO2,SOMO2,SOMO2]
+        cish[j+1,0] = cish[0,j+1]
+    #7 <OS1|H|SL2>
+    for j in range(3*ndocc + 3, 4*ndocc + 3):
+        cish[0,j+1] = 1.5 * rep_tens[j,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[j,SOMO1,SOMO1,SOMO1]
+        cish[j+1,0] = cish[0,j+1]
+    #8 - 13 are triplet states so have 0 interaction.
+    
+    # 14 <ZW0|H|ZW0>
+    cish[1,1] = energy0 + 0.5 * (rep
+    
+    
+    
+    return cish
     
 
     
@@ -1509,184 +1562,6 @@ def dipole(coords,atoms,norbs,hforbs,ndocc,nstates,basis,cis_option,hetero):
     return dipoles
    
 
-
-
-
-def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
-    '''
-    Form the XCIS Hamiltonian matrix in the rotated CSF basis.
-    Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
-    Note that the Hamiltonian basis is given in the working doc, i.e the ordering of CSFs.
-    
-    Args:
-        ndocc (int): Number of doubly occupied orbitals.
-        energy0 (float): Ground state HF energy.
-        orb_energies (array): HF orbital energies.
-        rep_tens (array): 4D tensor giving two-electron repulsion integrals in the MO basis.
-    Returns:
-    '''
-    SOMO1 = ndocc # Index of SOMO1
-    SOMO2 = ndocc + 1 # Index of SOMO2
-    nstates = 6 * ndocc ** 2 + 4 * ndocc + 4 # 6 * ndocc^2 doubles (HOMO to LUMO), 8 * ndocc singles (HOMO to SOMO and SOMO to LUMO), 4 reference configurations (OS GSs and Zwitterions)
-    cish = np.zeros((nstates,nstates)) 
-    #1 <0|H|0>
-    cish[0,0] = energy0
-    #2 <0|H|ibar->0bar> 
-    for i in range (ndocc): 
-        cish[0,i+1] = 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1] #cish[0,i+1] = fock_mat_mo[i,o0] + 0.5*rep_tens[i,o0,o0,o0]
-        cish[i+1,0] = cish[0,i+1]
-    #3 <0|H|0->j'>
-    for j in range (ndocc):
-        cish[0,j+ndocc+1] = -0.5*rep_tens[SOMO1,j+ndocc+1,SOMO1,SOMO1] #cish[0,j+ndocc+1] = fock_mat_mo[o0,j+ndocc+1] - 0.5*rep_tens[o0,j+ndocc+1,o0,o0]
-        cish[j+ndocc+1,0] = cish[0,j+ndocc+1]
-    #4 <0|H|Q i->j'> ALL ZERO
-    
-    #5 <0|H|D(+)i->j'> ALL ZERO (only depends on Fij')
-        
-    #6 <0|H|D(-)i->j'>
-    for n in range (ndocc**2):
-        nn = n+2*ndocc**2+2*ndocc+1
-        i = int(np.floor(n/ndocc))
-        j = n-i*ndocc+ndocc +1
-        cish[0,nn] = 3/(np.sqrt(6)) *rep_tens[i,o0,o0,j]
-        cish[nn,0] = cish[0,nn]
-    #7 <kbar->0bar|H|ibar->0bar> 
-    for i in range(ndocc):
-        for k in range(i,ndocc):
-            cish[i+1,k+1] = -rep_tens[i,k,o0,o0] +0.5*rep_tens[i,o0,o0,k]
-            if i==k:
-                cish[i+1,i+1] += energy0 + orb_energies[o0] - orb_energies[i] + 0.5*rep_tens[o0,o0,o0,o0]
-            cish[k+1,i+1] = cish[i+1,k+1]
-    #8 <kbar->0bar|H|0->j'>
-    for j in range(ndocc):
-        for k in range(ndocc):
-            cish[k+1,j+ndocc+1] = rep_tens[o0,k,o0,j+ndocc+1]
-            cish[j+ndocc+1,k+1] = cish[k+1,j+ndocc+1]
-    #9 <0->l',+|H|Q i->j'> ALL ZERO
-    
-    #10 <kbar->0bar|H|D(+)i->j'>  
-    for k in range(ndocc):
-        for n in range (ndocc**2):
-            nn = n+ndocc**2+2*ndocc+1
-            i = int(np.floor(n/ndocc))
-            jp = n-i*ndocc+ndocc +1
-            cish[k+1,nn] = np.sqrt(2)*rep_tens[o0,k,i,jp] - 1/np.sqrt(2)*rep_tens[o0,jp,i,k]
-            if i==k:
-                cish[k+1,nn] += 1/(2*np.sqrt(2))*rep_tens[o0,jp,o0,o0]
-            cish[nn,k+1] = cish[k+1,nn]
-    #11 <kbar->0bar|H|D(-)i->j'>
-    for k in range (ndocc):
-        for n in range (ndocc**2):
-            nn = n+2*ndocc**2+2*ndocc+1
-            i = int(np.floor(n/ndocc))
-            jp = n-i*ndocc+ndocc +1
-            cish[k+1,nn] = -3/np.sqrt(6)*rep_tens[o0,jp,i,k]
-            if i==k:
-               cish[k+1,nn] += 3/(2*np.sqrt(6))*rep_tens[o0,jp,o0,o0] 
-            cish[nn,k+1] = cish[k+1,nn]
-    #12 <0->l'|H|0->j'>
-    for j in range(ndocc):
-        for l in range(j,ndocc):
-            cish[j+ndocc+1,l+ndocc+1] = - rep_tens[j+ndocc+1,l+ndocc+1,o0,o0] + 0.5*rep_tens[j+ndocc+1,o0,o0,l+ndocc+1]
-            if j==l:
-                cish[j+ndocc+1,j+ndocc+1] += energy0 + orb_energies[j+ndocc+1] - orb_energies[o0] + 0.5*rep_tens[o0,o0,o0,o0]
-            cish[l+ndocc+1,j+ndocc+1] = cish[j+ndocc+1,l+ndocc+1]
-    #13 <0->l',-|H|Q i->j'> ALL ZERO
-           
-    #14 <0->l'|H|D(+)i->j'> 
-    for lp in range(ndocc+1,2*ndocc+1):
-        #print(lp)
-        for n in range (ndocc**2):
-            nn = n+ndocc**2+2*ndocc+1
-            i = int(np.floor(n/ndocc))
-            jp = n-i*ndocc+ndocc +1
-            cish[lp,nn] = np.sqrt(2)*rep_tens[i,jp,lp,o0] -1/np.sqrt(2)*rep_tens[i,o0,lp,jp]
-            if lp==jp:
-                cish[lp,nn] += 1/(2*np.sqrt(2))*rep_tens[i,o0,o0,o0]
-            cish[nn,lp] = cish[lp,nn]
-    #15 <0->l'|H|D(-)i->j'>
-    for lp in range(ndocc+1,2*ndocc+1):
-        for n in range (ndocc**2):
-            nn = n+2*ndocc**2+2*ndocc+1
-            i = int(np.floor(n/ndocc))
-            jp = n-i*ndocc+ndocc +1
-            cish[lp,nn] = 3/np.sqrt(6)*rep_tens[i,o0,lp,jp]
-            if jp==lp:
-                cish[lp,nn] -= 3/(2*np.sqrt(6))*rep_tens[i,o0,o0,o0]
-            cish[nn,lp] = cish[lp,nn]
-    #16 <Qk->l'|H|Qi->j'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-    for m in range(ndocc**2):
-        mm = m+2*ndocc+1
-        k = int(np.floor(m/ndocc))
-        l = m-k*ndocc+ndocc +1
-        for n in range (m,ndocc**2):
-            nn = n+2*ndocc+1
-            #print(mm,nn)
-            i = int(np.floor(n/ndocc))
-            j = n-i*ndocc+ndocc +1
-            cish[mm,nn] = -rep_tens[i,k,l,j]
-            if i==k:
-                cish[mm,nn] -= 0.5*rep_tens[j,o0,o0,l]
-            if j==l:
-                cish[mm,nn] -= 0.5*rep_tens[o0,k,i,o0]
-            if i==k and j==l:
-                cish[mm,nn] += energy0 + orb_energies[j] - orb_energies[i]
-            cish[nn,mm] = cish[mm,nn]
-         
-    #17 <Qk->l'|H|D(+)i->j'> ALL ZERO
-            
-    #18 <Qk->l'|H|D(-)i->j'> ALL ZERO
-            
-    #19 <D(+)i->j'|H|D(+)i->j'> CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-    for m in range(ndocc**2):
-        mm = m+ndocc**2+2*ndocc+1
-        k = int(np.floor(m/ndocc))
-        l = m-k*ndocc+ndocc +1
-        for n in range (m,ndocc**2):
-            nn = n+ndocc**2+2*ndocc+1
-            #print(mm,nn)
-            i = int(np.floor(n/ndocc))
-            j = n-i*ndocc+ndocc +1
-            cish[mm,nn] = 2*rep_tens[i,j,k,l] - rep_tens[i,k,j,l]
-            if i==k and j==l:
-                cish[mm,nn] += energy0 + orb_energies[j] - orb_energies[i] 
-            cish[nn,mm] = cish[mm,nn]
-            
-    #20 <D(+)i->j'|H|D(-)i->j'> 
-    for m in range(ndocc**2):
-        mm = m+ndocc**2+2*ndocc+1
-        k = int(np.floor(m/ndocc))
-        l = m-k*ndocc+ndocc +1
-        for n in range (ndocc**2):
-            nn = n+2*ndocc**2+2*ndocc+1
-            #print(mm,nn)
-            i = int(np.floor(n/ndocc))
-            j = n-i*ndocc+ndocc +1
-            if i==k:
-                cish[mm,nn] = 0.5*np.sqrt(3)*rep_tens[j,o0,o0,l]
-            if j==l:
-                cish[mm,nn] -= 0.5*np.sqrt(3)*rep_tens[o0,k,i,o0]
-            cish[nn,mm] = cish[mm,nn]
-    
-    #21 <D(-)i->j'|H|D(-)i->j'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-    for m in range(ndocc**2):
-        mm = m+2*ndocc**2+2*ndocc+1
-        k = int(np.floor(m/ndocc))
-        l = m-k*ndocc+ndocc +1
-        for n in range (m,ndocc**2):
-            nn = n+2*ndocc**2+2*ndocc+1
-            #print(mm,nn)
-            i = int(np.floor(n/ndocc))
-            j = n-i*ndocc+ndocc +1
-            cish[mm,nn] = -rep_tens[i,k,l,j]
-            if i==k:
-                cish[mm,nn] += rep_tens[j,o0,o0,l]
-            if j==l:
-                cish[mm,nn] += rep_tens[i,o0,o0,k]
-            if i==k and j==l:
-                cish[mm,nn] += energy0 + orb_energies[j] - orb_energies[i]
-            cish[nn,mm] = cish[mm,nn]
-    return cish
 
 def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file):
     '''
