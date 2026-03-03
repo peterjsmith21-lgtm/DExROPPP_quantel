@@ -718,15 +718,15 @@ def compute_k00(orbs,repulsion,ndocc):
 
 
 def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
-    """Calculates the total SCF energy of the ground state triplet state. This is usually expected to be the ground state but it can 
-       sometimes be the open shell singlet.
+    """Calculates the total SCF energy of a fictituous system that is close to the energy of the open-shell singlet ground state. 
+       This is usually expected to be the ground state but it can sometimes be the open shell singlet.
 
     Returns:
         float: The total calculated SCF energy of the system from PPP theory.
     """
     J00 = compute_j00(orbs,repulsion,ndocc)
     K00 = compute_k00(orbs,repulsion,ndocc)
-    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten())) - 0.25 * J00 - 0.5 * K00 
+    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten()))
 
 
 #Main HF function
@@ -816,7 +816,7 @@ def transform(two_body, hf_orbs):
 
 
 
-def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
+def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     '''
     Form the XCIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
     Note that the Hamiltonian basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, then the quintet,
@@ -833,9 +833,11 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
     SOMO2 = ndocc + 1 # Index of SOMO2
     # nstates = 6 * ndocc ** 2 + 4 * ndocc + 4  # 6 * ndocc^2 doubles (HOMO to LUMO), 8 * ndocc singles (HOMO to SOMO and SOMO to LUMO), 4 reference configurations (OS GSs and Zwitterions)
     nstates = 8 * ndocc + 4 # Ignoring HOMO to LUMO (double) excitations for the time being
-    cish = np.zeros((nstates,nstates)) 
+    cish = np.zeros((nstates,nstates))
+    
+    ################# SINGLET BLOCK ######################
     #1 <OS1|H|OS1>
-    cish[0,0] = energy0 + (1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]) # Adding extra exchange energy for singlet GS
+    cish[0,0] = energy0 - (0.25 * j00 ) + (1.5 * k00)
     #2 <OS1|H|ZW0>
     cish[0,1] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
     cish[1,0] = cish[0,1]
@@ -844,66 +846,152 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, rep_tens):
     cish[2,0] = cish[0,2]
     #4 <OS1|H|HS1> 
     for i in range(3, ndocc + 3):
-        cish[0,i+1] = 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1] - 1.5 * rep_tens[i,SOMO2,SOMO2,SOMO1]
-        cish[i+1,0] = cish[0,i+1]
+        cish[0,i] = 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1] - 1.5 * rep_tens[i,SOMO2,SOMO2,SOMO1]
+        cish[i,0] = cish[0,i]
     #5 <OS1|H|HS2> 
     for i in range(ndocc + 3, 2*ndocc + 3):
-        cish[0,i+1] = 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[i,SOMO1,SOMO1,SOMO2]
-        cish[i+1,0] = cish[0,i+1]
+        cish[0,i] = 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[i,SOMO1,SOMO1,SOMO2]
+        cish[i,0] = cish[0,i]
     #6 <OS1|H|SL1>
     for j in range(2*ndocc + 3, 3*ndocc + 3):
-        cish[0,j+1] = 1.5 * rep_tens[j,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[j,SOMO2,SOMO2,SOMO2]
-        cish[j+1,0] = cish[0,j+1]
+        cish[0,j] = 1.5 * rep_tens[j,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[j,SOMO2,SOMO2,SOMO2]
+        cish[j,0] = cish[0,j]
     #7 <OS1|H|SL2>
     for j in range(3*ndocc + 3, 4*ndocc + 3):
-        cish[0,j+1] = 1.5 * rep_tens[j,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[j,SOMO1,SOMO1,SOMO1]
-        cish[j+1,0] = cish[0,j+1]
+        cish[0,j] = 1.5 * rep_tens[j,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[j,SOMO1,SOMO1,SOMO1]
+        cish[j,0] = cish[0,j]
     #8 - 13 are triplet states so have 0 interaction.
     
     # 14 <ZW0|H|ZW0>
-    cish[1,1] = energy0 # UNFINISHED...
+    cish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * k00
     #15 <ZW0|H|ZW0'>
     cish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
     cish[2,1] = cish[1,2]
     #16 <ZW0|H|HS1>
     for i in range(3, ndocc + 3):
-        cish[1,i+1] = (2 ** 0.5) * (rep_tens[i,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO2])
-        cish[i+1,1] = cish[1,i+1]
+        cish[1,i] = (2 ** 0.5) * (rep_tens[i,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO2])
+        cish[i,1] = cish[1,i]
     #17 <ZW0|H|HS2>
     for i in range(ndocc + 3, 2*ndocc + 3):
-        cish[1,i+1] = (2 ** 0.5) * rep_tens[i,SOMO2,SOMO2,SOMO1]
-        cish[i+1,1] = cish[1,i+1]
+        cish[1,i] = (2 ** 0.5) * rep_tens[i,SOMO2,SOMO2,SOMO1]
+        cish[i,1] = cish[1,i]
     #18 <ZW0|H|SL1>
     for j in range(2*ndocc + 3, 3*ndocc + 3):
         cish[1,j+1] = (2 ** 0.5) * (0.5 * rep_tens[j,SOMO1,SOMO1,SOMO1] + 0.5 * rep_tens[j,SOMO2,SOMO2,SOMO1] - rep_tens[j,SOMO1,SOMO2,SOMO2])
-        cish[j+1,1] = cish[1,j+1]
+        cish[j+1,1] = cish[1,j]
     #19 <ZW0|H|SL2>
     for j in range(3*ndocc + 3, 4*ndocc + 3):
         cish[1,j+1] = (2 ** 0.5) * rep_tens[j,SOMO1,SOMO1,SOMO2]
-        cish[j+1,1] = cish[1,j+1]
-    #19 - 24 are triplet states so have 0 interaction.
+        cish[j+1,1] = cish[1,j]
+    #20 - 25 are triplet states so have 0 interaction.
     
-    #25 <ZW0'|H|ZW0'>
-    cish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-    cish[2,1] = cish[1,2]
-    #26 <ZW0'|H|HS1>
+    #26 <ZW0'|H|ZW0'>
+    cish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * k00
+    #27 <ZW0'|H|HS1>
     for i in range(3, ndocc + 3):
-        cish[1,i+1] = (2 ** 0.5) * rep_tens[i,SOMO1,SOMO1,SOMO2]
-        cish[i+1,1] = cish[1,i+1]
-    #27 <ZW0'|H|HS2>
+        cish[2,i] = (2 ** 0.5) * rep_tens[i,SOMO1,SOMO1,SOMO2]
+        cish[i,2] = cish[2,i]
+    #28 <ZW0'|H|HS2>
     for i in range(ndocc + 3, 2*ndocc + 3):
-        cish[1,i+1] = (2 ** 0.5) * (rep_tens[i,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1])
-        cish[i+1,1] = cish[1,i+1]
-    #28 <ZW0'|H|SL1>
+        cish[2,i] = (2 ** 0.5) * (rep_tens[i,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[i,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[i,SOMO1,SOMO1,SOMO1]) # CHECK SIGN
+        cish[i,2] = cish[2,i]
+    #29 <ZW0'|H|SL1>
     for j in range(2*ndocc + 3, 3*ndocc + 3):
-        cish[1,j+1] = (2 ** 0.5) * rep_tens[j,SOMO2,SOMO2,SOMO1]
-        cish[j+1,1] = cish[1,j+1]
-    #29 <ZW0'|H|SL2>
+        cish[2,j] = (2 ** 0.5) * rep_tens[j,SOMO2,SOMO2,SOMO1]
+        cish[j,2] = cish[2,j]
+    #30 <ZW0'|H|SL2>
     for j in range(3*ndocc + 3, 4*ndocc + 3):
-        cish[1,j+1] = (2 ** 0.5) * (0.5 * rep_tens[j,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[j,SOMO1,SOMO1,SOMO2] - rep_tens[j,SOMO2,SOMO1,SOMO1])
-        cish[j+1,1] = cish[1,j+1]
-    #30 - 35 are triplet states so have 0 interaction.
-
+        cish[2,j] = (2 ** 0.5) * (0.5 * rep_tens[j,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[j,SOMO1,SOMO1,SOMO2] - rep_tens[j,SOMO2,SOMO1,SOMO1]) # CHECK SIGN
+        cish[j,2] = cish[2,j]
+    #31 - 36 are triplet states so have 0 interaction.
+    
+    #37 <HS1|H|HS1>
+    for j in range(3, ndocc + 3):
+        for i in range(j, ndocc + 3):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[SOMO1] - orb_energies[i] - rep_tens[i, i, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             + 1.5 * rep_tens[i, SOMO2, SOMO2, i] + 0.5 * rep_tens[i, SOMO1, SOMO1, i] + k00
+            else:    
+                cish[i, j] = 0.5 * (rep_tens[i, SOMO1, SOMO1, j] + rep_tens[i, SOMO2, SOMO2, j]) - rep_tens[i, j, SOMO1, SOMO1]
+            cish[j, i] = cish[i,j]
+    #38 <HS1|H|HS2>
+    for j in range(ndocc + 3, 2 * ndocc + 3):
+        for i in range(j, ndocc + 3):
+            if i == j:
+                cish[i, j] = rep_tens[SOMO1, i, i, SOMO2] - rep_tens[i, i, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO1, SOMO1] \
+                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
+            else:    
+                cish[i, j] = rep_tens[i, j, SOMO1, SOMO2] + rep_tens[i, SOMO1, SOMO2, j] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+    #39 <HS1|H|SL1>
+    for j in range(2 * ndocc + 3, 3 * ndocc + 3):
+        for i in range(j, ndocc + 3):
+            cish[i, j] = 2 * rep_tens[i, SOMO2, SOMO1, j] - rep_tens[i, SOMO1, SOMO2, j] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+    #40 <HS1|H|SL2>
+    for j in range(3 * ndocc + 3, 4 * ndocc + 3):
+        for i in range(j, ndocc + 3):
+            cish[i, j] = rep_tens[i, SOMO1, SOMO1, j] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+    # 41 - 46 are triplets so have no interaction
+    
+    #47 <HS2|H|HS2>
+    for j in range(ndocc + 3, 2 * ndocc + 3):
+        for i in range(j, 2 * ndocc + 3):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[SOMO2] - orb_energies[i] - rep_tens[i, i, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             + 1.5 * rep_tens[i, SOMO1, SOMO1, i] + 0.5 * rep_tens[i, SOMO2, SOMO2, i] + k00
+            else:    
+                cish[i, j] = 1.5 * (rep_tens[i, SOMO1, SOMO1, j] + rep_tens[i, j, SOMO2, SOMO2]) - 0.5 * rep_tens[i, SOMO2, SOMO2, j]
+            cish[j, i] = cish[i,j]
+    #48 <HS2|H|SL1>
+    for j in range(2 * ndocc + 3, 3 * ndocc + 3):
+        for i in range(j, 2 * ndocc + 3):
+            cish[i, j] = rep_tens[i, SOMO2, SOMO2, j]
+            cish[j, i] = cish[i,j]
+    #49 <HS2|H|SL2>
+    for j in range(3 * ndocc + 3, 4 * ndocc + 3):
+        for i in range(j, 2 * ndocc + 3):
+            cish[i, j] = rep_tens[i, SOMO2, SOMO1, j] - 2 * rep_tens[i, SOMO1, SOMO2, j]
+            cish[j, i] = cish[i,j]
+    #50 - 55 are triplets so no interaction
+    
+    #56 <SL1|H|SL1>
+    for j in range(2 * ndocc + 3, 3 * ndocc + 3):
+        for i in range(j, 3 * ndocc + 3):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[i] - orb_energies[SOMO2] - rep_tens[i, i, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1]+ 1.5 * rep_tens[i, SOMO1, SOMO1, i] + 0.5 * rep_tens[i, SOMO2, SOMO2, i]
+            else:    
+                cish[i, j] = 1.5 * rep_tens[i, SOMO2, SOMO2, j] + 0.5 * rep_tens[i, SOMO1, SOMO1, j] -  rep_tens[i, j, SOMO2, SOMO2]
+            cish[j, i] = cish[i,j]
+    #57 <SL1|H|SL2>
+    for j in range(3 * ndocc + 3, 4 * ndocc + 3):
+        for i in range(j, 3 * ndocc + 3):
+            if i == j:
+                cish[i, j] = rep_tens[i, i, SOMO1, SOMO2] + rep_tens[i, SOMO1, SOMO2, i] - 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
+            else:    
+                cish[i, j] = rep_tens[i, j, SOMO1, SOMO2] + rep_tens[i, SOMO2, SOMO1, j]
+            cish[j, i] = cish[i,j]
+    
+    #58 - 63 are all triplets so have no interaction
+            
+    #64 <SL2|H|SL2>
+    for j in range(3 * ndocc + 3, 4 * ndocc + 3):
+        for i in range(j, 4 * ndocc + 3):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[i] - orb_energies[SOMO1] - rep_tens[i, i, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2]+ 1.5 * rep_tens[i, SOMO2, SOMO2, i] + 0.5 * rep_tens[i, SOMO1, SOMO1, i]
+            else:    
+                cish[i, j] = 1.5 * rep_tens[i, SOMO2, SOMO2, j] - 0.5 * rep_tens[i, SOMO1, SOMO1, j] - rep_tens[i, j, SOMO1, SOMO1] - rep_tens[i, j, SOMO2, SOMO2]
+            cish[j, i] = cish[i,j]
+    
+    #65 - 70 are all triplets so have no interaction
+    
+    ################# TRIPLET BLOCK ######################
+    
+    #...
+    
     return cish
     
 
