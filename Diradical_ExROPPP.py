@@ -1816,15 +1816,18 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
 
         # Transform 2-el ingrls into mo basis
         rep_tens = transform(repulsion,hf_orbs)
+        # Get exchange and Coulomb terms for SOMOs
+        j00 = compute_j00(hf_orbs,repulsion,ndocc)
+        k00 = compute_k00(hf_orbs,repulsion,ndocc)
         # Construct CIS Hamiltonian
-        ham_rot = cisd_ham_rot(ndocc,energy0,orb_energies,rep_tens)
+        ham_rot = cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens)
         print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
         print("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
 
         out.write("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... \n")
         out.write("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
-        o0 = ndocc
-        nstates = 3*ndocc**2 +2*ndocc +1
+        
+        nstates = 8 * ndocc + 4 # ONLY CIS matrix for now
         if states_cutoff_option == 'states' and states_to_print <= nstates:
             rng = states_to_print
             print('Lowest %d states. WARNING - Some states may not be included in the spectrum.\n'%states_to_print)
@@ -1839,97 +1842,119 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         else:
             cutoff_energy = 100
         # Diagonalize CIS Hamiltonianfor first rng excited states
-        if rng<nstates:
+        if rng < nstates:
             print("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
             out.write("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
 
-            cis_energies,cis_coeffs=sp.eigsh(ham_rot,k=rng,which="SA")
-        elif rng==nstates:
+            cis_energies, cis_coeffs = sp.eigsh(ham_rot,k=rng,which="SA")
+        elif rng == nstates:
             print("Diagonalizing Hamiltonian using the dense matrix method ...\n")
             out.write("Diagonalizing Hamiltonian using the dense matrix method ...\n")
-            cis_energies,cis_coeffs=linalg.eigh(ham_rot)
-        dip_array = dipole(coords,atoms,norbs,hf_orbs,ndocc,nstates,'rot','cisd','no')
-        aku=np.einsum("ijx,jk",dip_array,cis_coeffs)
-        mu0u=np.einsum("j,jix",cis_coeffs[:,0].T,aku)
-        osc_array=np.zeros_like(cis_energies)
-        s2_array=np.zeros_like(cis_energies)
+            cis_energies, cis_coeffs = linalg.eigh(ham_rot)
+            #### IGNORE DIPOLE CALCULATION FOR NOW ####
+        # dip_array = dipole(coords,atoms,norbs,hf_orbs,ndocc,nstates,'rot','cisd','no')
+        # aku=np.einsum("ijx,jk",dip_array,cis_coeffs)
+        # mu0u=np.einsum("j,jix",cis_coeffs[:,0].T,aku)
+        # osc_array=np.zeros_like(cis_energies)
+        # s2_array=np.zeros_like(cis_energies)
         print("Ground state energy relative to E(|0>): %04.3f eV"%(cis_energies[0]-energy0))
         out.write("Ground state energy relative to E(|0>): %04.3f eV\n"%(cis_energies[0]-energy0))
         rt = 2.**.5
-        strng = ""
+        # strng = ""
         for i in range(rng): # Loop over CIS states
-            if cis_energies[i]-cis_energies[0] > cutoff_energy:
+            if cis_energies[i] - cis_energies[0] > cutoff_energy:
                 break
-            print("State %s %04.3f eV \n" % (i,cis_energies[i]-cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
+            print("State %s %04.3f eV \n" % (i,cis_energies[i] - cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
             print("Excitation    CI Coef    CI C*rt(2)")
-            out.write("State %s %04.3f eV \n" % (i,cis_energies[i]-cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
+            out.write("State %s %04.3f eV \n" % (i,cis_energies[i] - cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
             out.write("Excitation    CI Coef    CI C*rt(2)\n")
-            spin = 0 # initialise total spin
-            for j in range (cis_coeffs.shape[0]): # Loop over configurations in each CIS state   
-            # if configuration is the ground determinant
+            # spin = 0 # initialise total spin
+            for j in range (cis_coeffs.shape[0]): # Loop over configurations in each CIS state
+                ########### SINGLET CSFS ############   
+            # if configuration is the open shell singlet ground state (|OS1>)
                 if j == 0: 
-                    if np.absolute(cis_coeffs[j,i]) > 1e-2:
-                        print('|0>           %10.5f'  %(cis_coeffs[j,i]))
-                        out.write('|0>           %10.5f\n'  %(cis_coeffs[j,i]))
-                    spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
-                    continue
-            # if configuration is |ibar->0bar>     
-                elif j>0 and j<=ndocc:
-                    iorb = j-1
-                    str1 = str(ndocc-iorb) + "bar" #str(iorb) + "bar" #
-                    str2 = "0bar" #"3bar"#
-                    spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
-        # if configuration is |0->j'> 
-                elif j>ndocc and j<=2*ndocc:
-                    jorb = j 
-                    str1 = "0" 
-                    str2 = str(jorb-ndocc)+"'" #str(jorb) #
-                    spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
-            # if configuration is |Qi->j'>
-                elif j>2*ndocc and j<=2*ndocc + ndocc**2:
-                    iorb = int(np.floor((j-2*ndocc-1)/ndocc))
-                    jorb = (j-2*ndocc-1)-iorb*ndocc+ndocc +1
-                    str1 = "Q " + str(ndocc-iorb)
-                    str2 = str(jorb-ndocc)+"'" 
-                    spin += 3.75*cis_coeffs[j,i]**2 # (S=1.5) 
-            # if configuration is |D(S)i->j'> (bright doublet state)
-                elif j>2*ndocc + ndocc**2 and j<=2*ndocc + 2*ndocc**2:
-                    iorb = int(np.floor((j-2*ndocc-ndocc**2-1)/ndocc))
-                    jorb = (j-2*ndocc-ndocc**2-1)-iorb*ndocc+ndocc +1
-                    str1 = "D(S) " +str(ndocc-iorb)
-                    str2 = str(jorb-ndocc)+"'"
-                    spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
-            #if configuration is |D(T)i->j'> (dark doublet state)
-                elif j>2*ndocc + 2*ndocc**2:
-                    iorb = int(np.floor((j-2*ndocc-2*ndocc**2-1)/ndocc))
-                    jorb = (j-2*ndocc-2*ndocc**2-1)-iorb*ndocc+ndocc +1
-                    str1 = "D(T) "+str(ndocc-iorb)
-                    str2 = str(jorb-ndocc)+"'"
-                    spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
-                if np.absolute(cis_coeffs[j,i]) > 1e-1:
+                    str = "|1^OS>"
+                    # spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Zwitterion 0 (|ZW0>)    
+                elif j == 1:
+                    str = "|1^ZW0>"
+                    # spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Zwitterion 0' (|ZW0'>)   
+                elif j == 2:
+                    str = "|1^ZW0'>"
+                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Singlet Homo to SOMO 1 (|1^HS1>)
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    str = f"|1^HS1_{iorb}>" 
+                    # spin += 3.75*cis_coeffs[j,i]**2 # (S=1.5) 
+            # if configuration is Singlet Homo to SOMO 2 (|1^HS2>)
+                elif j > ndocc + 2 and j <= 2 * ndocc + 2:
+                    iorb = 2 * ndocc + 3 - j
+                    str = f"|1^HS2_{iorb}>" 
+                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Singlet SOMO to LUMO 1 (|1^SL1>)
+                elif j > 2 * ndocc + 2 and j <= 3 * ndocc + 2:
+                    iorb = 3 * ndocc + 3 - j
+                    str1 = f"|1^SL1_{iorb}>"
+                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Singlet SOMO to LUMO 2 (|1^SL2>)
+                elif j > 3 * ndocc + 2 and j <= 4 * ndocc + 2:
+                    iorb = 4 * ndocc + 3 - j
+                    str1 = f"|1^SL2_{iorb}>"
+                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    
+                ########### TRIPLET CSFs ###########
+            # if configuration is the open shell Triplet ground state (|OS3>)
+                if j == 4 * ndocc + 3: 
+                    str = "|3^OS>"
+                    # spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Triplet Homo to SOMO 1 (|3^HS1>)
+                elif j > 4 * ndocc + 3 and j <= 5 * ndocc + 3:
+                    iorb = 5 * ndocc + 4 - j
+                    str = f"|3^HS1_{iorb}>" 
+                    # spin += 3.75*cis_coeffs[j,i]**2 # (S=1.5) 
+            # if configuration is Triplet Homo to SOMO 2 (|3^HS2>)
+                elif j > 5 * ndocc + 3 and j <= 6 * ndocc + 3:
+                    iorb = 6 * ndocc + 4 - j
+                    str = f"|3^HS2_{iorb}>" 
+                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Triplet SOMO to LUMO 1 (|3^SL1>)
+                elif j > 6 * ndocc + 3 and j <= 7 * ndocc + 3:
+                    iorb = 7 * ndocc + 4 - j
+                    str1 = f"|3^SL1_{iorb}>"
+                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+            # if configuration is Triplet SOMO to LUMO 2 (|3^SL2>)
+                elif j > 7 * ndocc + 3 and j <= 8 * ndocc + 3:
+                    iorb = 8 * ndocc + 4 - j
+                    str1 = f"|3^SL2_{iorb}>"
+                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                if np.absolute(cis_coeffs[j,i]) > 1e-1: # SHOULD BE ABLE TO CHANGE THIS CSF TOLERANCE
                     print("%s->%s %10.5f %10.5f " \
-                    %(str1,str2,cis_coeffs[j,i],cis_coeffs[j,i]*rt))
+                    %(str,cis_coeffs[j,i],cis_coeffs[j,i]*rt))
                     out.write("%s->%s %10.5f %10.5f\n" \
-                    %(str1,str2,cis_coeffs[j,i],cis_coeffs[j,i]*rt))
+                    %(str,cis_coeffs[j,i],cis_coeffs[j,i]*rt))
+            '''
             if i==0:
                 print("\n<S**2>: %04.3f" %spin)
                 print("--------------------------------------------------------------------\n")
                 out.write("<S**2>: %04.3f\n" %spin)
                 out.write("--------------------------------------------------------------------\n")
                 continue
-            osc = 2.0/3.0*((cis_energies[i]-cis_energies[0])/toev)*(mu0u[i,0]**2+mu0u[i,1]**2+mu0u[i,2]**2) 
-            osc_array[i]=osc
-            s2_array[i]=spin
-            print("")
-            print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (mu0u[i,0], mu0u[i,1], mu0u[i,2], osc, spin))
-            print("--------------------------------------------------------------------\n")
-            out.write("")
-            out.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f\n" % (mu0u[i,0], mu0u[i,1], mu0u[i,2], osc, spin))
-            out.write("--------------------------------------------------------------------\n")
+            '''
+            #osc = 2.0/3.0*((cis_energies[i]-cis_energies[0])/toev)*(mu0u[i,0]**2+mu0u[i,1]**2+mu0u[i,2]**2) 
+            #osc_array[i]=osc
+            #s2_array[i]=spin
+            #print("")
+            #print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (mu0u[i,0], mu0u[i,1], mu0u[i,2], osc, spin))
+            #print("--------------------------------------------------------------------\n")
+            #out.write("")
+            #out.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f\n" % (mu0u[i,0], mu0u[i,1], mu0u[i,2], osc, spin))
+            #out.write("--------------------------------------------------------------------\n")
             #strng = strng + broaden(20.0,osc,cis_energies[i]-cis_energies[0]) 
-            strng = strng + broaden(FWHM,osc,cis_energies[i]-cis_energies[0])
-        strng = strng[1:]    
-    return strng, cis_energies-cis_energies[0],osc_array,s2_array
+            #strng = strng + broaden(FWHM,osc,cis_energies[i]-cis_energies[0])
+        #strng = strng[1:]    
+    return strng, cis_energies - cis_energies[0] #,osc_array,s2_array
 
 def hetero_cisd_ham(ndocc,norbs,energy0,orb_energies,rep_tens):
     o0 = ndocc# no. of doubly-occupied orbitals
