@@ -990,7 +990,104 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     
     ################# TRIPLET BLOCK ######################
     
-    #...
+    #71 <OS3|H|OS3>
+    cish[4 * ndocc + 3, 4 * ndocc + 3] = energy0 - (0.25 * j00 ) - (0.5 * k00)
+    #72 <OS3|H|HS1>
+    for i in range(4 * ndocc + 4, 5 * ndocc + 4):
+        cish[4 * ndocc + 3, i] = 0.5 * rep_tens[i, SOMO1, SOMO1, SOMO1] + 0.5 * rep_tens[i, SOMO2, SOMO2, SOMO1]
+        cish[i, 4 * ndocc + 3] = cish[4 * ndocc + 3,i]
+    #73 <OS3|H|HS2>
+    for i in range(5 * ndocc + 4, 6 * ndocc + 4):
+        cish[4 * ndocc + 3, i] = 0.5 * rep_tens[i, SOMO2, SOMO2, SOMO2] + 0.5 * rep_tens[i, SOMO1, SOMO1, SOMO2]
+        cish[i, 4 * ndocc + 3] = cish[4 * ndocc + 3,i]
+    #73 <OS3|H|SL1>
+    for i in range(6 * ndocc + 4, 7 * ndocc + 4):
+        cish[4 * ndocc + 3, i] = 0.5 * rep_tens[i, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[i, SOMO1, SOMO2, SOMO1]
+        cish[i, 4 * ndocc + 3] = cish[4 * ndocc + 3,i]
+    #73 <OS3|H|SL2>
+    for i in range(7 * ndocc + 4, 8 * ndocc + 4):
+        cish[4 * ndocc + 3, i] = 0.5 * rep_tens[i, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[i, SOMO2, SOMO2, SOMO1]
+        cish[i, 4 * ndocc + 3] = cish[4 * ndocc + 3,i]
+    
+    #74 <HS1|H|HS1>
+    for j in range(4 * ndocc + 4, 5 * ndocc + 4):
+        for i in range(j, 5 * ndocc + 4):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[SOMO1] - orb_energies[i] - rep_tens[i, i, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             - 0.5 * rep_tens[i, SOMO2, SOMO2, i] + 0.5 * rep_tens[i, SOMO1, SOMO1, i] + k00
+            else:    
+                cish[i, j] = 0.5 * (rep_tens[i, SOMO1, SOMO1, j] - rep_tens[i, j, SOMO1, SOMO1]) - 1.5 * rep_tens[i, SOMO2, SOMO2, j] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+    #75 <HS1|H|HS2>
+    for j in range(5 * ndocc + 4, 6 * ndocc + 4):
+        for i in range(j, 5 * ndocc + 4):
+            if i == j:
+                cish[i, j] = rep_tens[SOMO1, i, i, SOMO2] - rep_tens[i, i, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO2, SOMO1, SOMO1, SOMO1] \
+                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]                                                               #CHECK RESULT, SAME AS SINGLET?
+            else:    
+                cish[i, j] = rep_tens[i, SOMO1, SOMO2, j] - rep_tens[i, j, SOMO1, SOMO2] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+    #76 <HS1|H|SL1>
+    for j in range(6 * ndocc + 4, 7 * ndocc + 4):
+        for i in range(j, 5 * ndocc + 4):
+            cish[i, j] = rep_tens[i, SOMO1, SOMO2, j] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+    #77 <HS1|H|SL2>
+    for j in range(7 * ndocc + 4, 8 * ndocc + 4):
+        for i in range(j, 5 * ndocc + 4):
+            cish[i, j] = rep_tens[i, SOMO1, SOMO1, j] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+
+    
+    #78 <HS2|H|HS2>
+    for j in range(5 * ndocc + 4, 6 * ndocc + 4):
+        for i in range(j, 6 * ndocc + 4):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[SOMO2] - orb_energies[i] - rep_tens[i, i, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.5 * rep_tens[i, SOMO1, SOMO1, i] + 0.5 * rep_tens[i, SOMO2, SOMO2, i] + k00
+            else:    
+                cish[i, j] = (rep_tens[i, SOMO1, SOMO2, j] - rep_tens[i, j, SOMO1, SOMO2])
+            cish[j, i] = cish[i,j]
+    #79 <HS2|H|SL1>
+    for j in range(6 * ndocc + 4, 7 * ndocc + 4):
+        for i in range(j, 6 * ndocc + 4):
+            cish[i, j] = rep_tens[i, SOMO2, SOMO2, j]
+            cish[j, i] = cish[i,j]
+    #80 <HS2|H|SL2>
+    for j in range(7 * ndocc + 4, 8 * ndocc + 4):
+        for i in range(j, 6 * ndocc + 4):
+            cish[i, j] = rep_tens[i, SOMO2, SOMO1, j]
+            cish[j, i] = cish[i,j]
+            
+    
+    #81 <SL1|H|SL1>
+    for j in range(2 * ndocc + 3, 3 * ndocc + 3):
+        for i in range(j, 3 * ndocc + 3):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[i] - orb_energies[SOMO2] - rep_tens[i, i, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[i, SOMO1, SOMO1, i] + 0.5 * rep_tens[i, SOMO2, SOMO2, i]
+            else:    
+                cish[i, j] =  0.5 * rep_tens[i, SOMO1, SOMO1, j] - rep_tens[i, j, SOMO2, SOMO2] - 0.5 * rep_tens[i, SOMO2, SOMO2, j]
+            cish[j, i] = cish[i,j]
+    #82 <SL1|H|SL2>
+    for j in range(3 * ndocc + 3, 4 * ndocc + 3):
+        for i in range(j, 3 * ndocc + 3):
+            if i == j:
+                cish[i, j] = rep_tens[i, i, SOMO1, SOMO2] - rep_tens[i, SOMO1, SOMO2, i] - 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
+            else:    
+                cish[i, j] = rep_tens[i, j, SOMO1, SOMO2] - rep_tens[i, SOMO2, SOMO1, j] # CHECK SIGN
+            cish[j, i] = cish[i,j]
+    
+            
+    #83 <SL2|H|SL2>
+    for j in range(3 * ndocc + 3, 4 * ndocc + 3):
+        for i in range(j, 4 * ndocc + 3):
+            if i == j:
+                cish[i, j] = energy0 + orb_energies[i] - orb_energies[SOMO1] - rep_tens[i, i, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[i, SOMO2, SOMO2, i] + 0.5 * rep_tens[i, SOMO1, SOMO1, i]
+            else:    
+                cish[i, j] =  0.5 * rep_tens[i, SOMO1, SOMO1, j] - 0.5 * rep_tens[i, SOMO2, SOMO2, j] - rep_tens[i, j, SOMO1, SOMO1] - rep_tens[i, j, SOMO2, SOMO2]
+            cish[j, i] = cish[i,j]
     
     return cish
     
