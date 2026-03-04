@@ -884,17 +884,17 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
         cish[1,col] = (2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
-        cish[i,col] = cish[1,col]
+        cish[col, 1] = cish[1,col]
     #18 <ZW0|H|SL1>
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + ndocc):
         v_orb = col - block_index + (SOMO2 + 1)
-        cish[1,j+1] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] + 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - rep_tens[v_orb,SOMO1,SOMO2,SOMO2])
-        cish[j+1,1] = cish[1,j]
+        cish[1,col] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] + 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - rep_tens[v_orb,SOMO1,SOMO2,SOMO2])
+        cish[col,1] = cish[1,col]
     #19 <ZW0|H|SL2>
     block_index = 3*ndocc + 3
-    for j in range(block_index, block_index + ndocc):
-        v_orb = j - block_index + (SOMO2 + 1)
+    for col in range(block_index, block_index + ndocc):
+        v_orb = col - block_index + (SOMO2 + 1)
         cish[1,col] = (2 ** 0.5) * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
         cish[col,1] = cish[1,col]
     #20 - 25 are triplet states so have 0 interaction.
@@ -906,7 +906,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
         cish[2,col] = (2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,2] = cish[2,i]
+        cish[col,2] = cish[2,col]
     #28 <ZW0'|H|HS2>
     block_index = ndocc + 3
     for col in range(block_index, block_index + ndocc):
@@ -975,14 +975,14 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     col_block_index = ndocc + 3
     for row in range(row_block_index, row_block_index + ndocc):
         o_orb1 = row - row_block_index
-        for col in range(row, col_block_index):
+        for col in range(row, col_block_index + ndocc):
             o_orb2 = col - col_block_index
             if o_orb1 == o_orb2:
                 cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
                              + 1.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + k00
             else:    
                 cish[row, col] = 1.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb2, o_orb1, SOMO2, SOMO2]) - 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
-            cish[j, i] = cish[i,j]
+            cish[col, row] = cish[row,col]
     #48 <HS2|H|SL1>
     col_block_index = 2 * ndocc + 3
     for row in range(row_block_index, row_block_index + ndocc):
@@ -1010,7 +1010,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
                 cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1]+ 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
             else:    
                 cish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
             cish[col, row] = cish[row,col]
@@ -1024,7 +1024,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
                 cish[row, col] = rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] + rep_tens[v_orb1, SOMO1, SOMO2, v_orb1] - 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
             else:    
                 cish[row, col] = rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] + rep_tens[v_orb1, SOMO2, SOMO1, v_orb2]
-            cish[j, i] = cish[i,j]
+            cish[col, row] = cish[row,col]
     
     #58 - 63 are all triplets so have no interaction
     
@@ -1040,7 +1040,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
                              - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2]+ 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
             else:    
                 cish[row, col] = 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2]
-            cish[j, i] = cish[i,j]
+            cish[col, row] = cish[row,col]
     
     #65 - 70 are all triplets so have no interaction
     
@@ -1125,11 +1125,12 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
         for col in range(row, col_block_index + ndocc):
             o_orb2 = col - col_block_index
             if o_orb1 == o_orb2:
-                cish[i, j] = energy0 + orb_energies[SOMO2] - orb_energies[i] - rep_tens[i, i, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.5 * rep_tens[i, SOMO1, SOMO1, i] + 0.5 * rep_tens[i, SOMO2, SOMO2, i] + k00
+
+                cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + k00
             else:
-                cish[i, j] = (rep_tens[i, SOMO1, SOMO2, j] - rep_tens[i, j, SOMO1, SOMO2])
-            cish[j, i] = cish[i,j]
+                cish[row, col] = rep_tens[o_orb1, o_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
+            cish[col, row] = cish[row,col]
     #79 <HS2|H|SL1>
     col_block_index = 6 * ndocc + 4
     for row in range(row_block_index, row_block_index + ndocc):
@@ -1149,7 +1150,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
             
     row_block_index = 6 * ndocc + 4
     #81 <SL1|H|SL1>
-    col_block_index =  5 * ndocc + 4
+    col_block_index =  6 * ndocc + 4
     for row in range(row_block_index, row_block_index + ndocc):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
         for col in range(row, col_block_index + ndocc):
@@ -1161,7 +1162,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
                 cish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
             cish[col, row] = cish[row,col]
     #82 <SL1|H|SL2>
-    col_block_index = 6 * ndocc + 4
+    col_block_index = 7 * ndocc + 4
     for row in range(row_block_index, row_block_index + ndocc):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
         for col in range(col_block_index, col_block_index + ndocc):
@@ -1177,7 +1178,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     col_block_index =  7 * ndocc + 4
     for row in range(row_block_index, row_block_index + ndocc):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index):
+        for col in range(row, col_block_index + ndocc):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
                 cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
@@ -1919,6 +1920,7 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         k00 = compute_k00(hf_orbs,repulsion,ndocc)
         # Construct CIS Hamiltonian
         ham_rot = cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens)
+        print(ham_rot)
         print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
         print("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
 
@@ -1955,17 +1957,17 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         # mu0u=np.einsum("j,jix",cis_coeffs[:,0].T,aku)
         # osc_array=np.zeros_like(cis_energies)
         # s2_array=np.zeros_like(cis_energies)
+        print(cis_coeffs)
         print("Ground state energy relative to E(|0>): %04.3f eV"%(cis_energies[0]-energy0))
         out.write("Ground state energy relative to E(|0>): %04.3f eV\n"%(cis_energies[0]-energy0))
-        rt = 2.**.5
         strng = ""
         for i in range(rng): # Loop over CIS states
             if cis_energies[i] - cis_energies[0] > cutoff_energy:
                 break
-            print("State %s %04.3f eV \n" % (i,cis_energies[i] - cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
-            print("Excitation    CI Coef    CI C*rt(2)")
-            out.write("State %s %04.3f eV \n" % (i,cis_energies[i] - cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
-            out.write("Excitation    CI Coef    CI C*rt(2)\n")
+            print("\nState %s %04.3f eV " % (i, cis_energies[i] - cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
+            print("Excitation    CI Coef")
+            out.write("State %s %04.3f eV \n" % (i, cis_energies[i] - cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
+            out.write("Excitation    CI Coef\n")
             # spin = 0 # initialise total spin
             for j in range (cis_coeffs.shape[0]): # Loop over configurations in each CIS state
                 ########### SINGLET CSFS ############   
@@ -1987,51 +1989,49 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
                     str = f"|1^HS1_{iorb}>" 
                     # spin += 3.75*cis_coeffs[j,i]**2 # (S=1.5) 
             # if configuration is Singlet Homo to SOMO 2 (|1^HS2>)
-                elif j > ndocc + 2 and j <= 2 * ndocc + 2:
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
                     iorb = 2 * ndocc + 3 - j
                     str = f"|1^HS2_{iorb}>" 
                     #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
             # if configuration is Singlet SOMO to LUMO 1 (|1^SL1>)
-                elif j > 2 * ndocc + 2 and j <= 3 * ndocc + 2:
+                elif j > (2 * ndocc + 2) and j <= (3 * ndocc + 2):
                     iorb = 3 * ndocc + 3 - j
-                    str1 = f"|1^SL1_{iorb}>"
+                    str = f"|1^SL1_{iorb}'>"
                     #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
             # if configuration is Singlet SOMO to LUMO 2 (|1^SL2>)
-                elif j > 3 * ndocc + 2 and j <= 4 * ndocc + 2:
+                elif j > (3 * ndocc + 2) and j <= (4 * ndocc + 2):
                     iorb = 4 * ndocc + 3 - j
-                    str1 = f"|1^SL2_{iorb}>"
+                    str = f"|1^SL2_{iorb}'>"
                     #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
                     
                 ########### TRIPLET CSFs ###########
             # if configuration is the open shell Triplet ground state (|OS3>)
-                if j == 4 * ndocc + 3: 
+                if j == (4 * ndocc + 3): 
                     str = "|3^OS>"
                     # spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
             # if configuration is Triplet Homo to SOMO 1 (|3^HS1>)
-                elif j > 4 * ndocc + 3 and j <= 5 * ndocc + 3:
+                elif j > (4 * ndocc + 3) and j <= (5 * ndocc + 3):
                     iorb = 5 * ndocc + 4 - j
                     str = f"|3^HS1_{iorb}>" 
                     # spin += 3.75*cis_coeffs[j,i]**2 # (S=1.5) 
             # if configuration is Triplet Homo to SOMO 2 (|3^HS2>)
-                elif j > 5 * ndocc + 3 and j <= 6 * ndocc + 3:
+                elif j > (5 * ndocc + 3) and j <= (6 * ndocc + 3):
                     iorb = 6 * ndocc + 4 - j
                     str = f"|3^HS2_{iorb}>" 
                     #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
             # if configuration is Triplet SOMO to LUMO 1 (|3^SL1>)
-                elif j > 6 * ndocc + 3 and j <= 7 * ndocc + 3:
+                elif j > (6 * ndocc + 3) and j <= (7 * ndocc + 3):
                     iorb = 7 * ndocc + 4 - j
-                    str1 = f"|3^SL1_{iorb}>"
+                    str = f"|3^SL1_{iorb}'>"
                     #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
             # if configuration is Triplet SOMO to LUMO 2 (|3^SL2>)
-                elif j > 7 * ndocc + 3 and j <= 8 * ndocc + 3:
+                elif j > (7 * ndocc + 3) and j <= (8 * ndocc + 3):
                     iorb = 8 * ndocc + 4 - j
-                    str1 = f"|3^SL2_{iorb}>"
+                    str = f"|3^SL2_{iorb}'>"
                     #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
                 if np.absolute(cis_coeffs[j,i]) > 1e-1: # SHOULD BE ABLE TO CHANGE THIS CSF TOLERANCE
-                    print("%s->%s %10.5f %10.5f " \
-                    %(str,cis_coeffs[j,i],cis_coeffs[j,i]*rt))
-                    out.write("%s->%s %10.5f %10.5f\n" \
-                    %(str,cis_coeffs[j,i],cis_coeffs[j,i]*rt))
+                    print("%s %10.5f" %(str,cis_coeffs[j,i]))
+                    out.write("%s %10.5f \n" %(str,cis_coeffs[j,i]))
             '''
             if i==0:
                 print("\n<S**2>: %04.3f" %spin)
@@ -2895,7 +2895,8 @@ def rad_calc(file,params):
                 print(dens_mo)
                 sys.exit()
     if sum(n_list)==0 and natoms_cl==0: 
-        strng,ci_energies_array,osc_array,s2_array= cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
+        #strng,ci_energies_array,osc_array,s2_array= cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
+        strng,ci_energies_array = cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
     else:
         strng,ci_energies_array,osc_array,s2_array = hetero_cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
     return strng,ci_energies_array #,osc_array,s2_array  #return gnuplot data for plotting spectrum
