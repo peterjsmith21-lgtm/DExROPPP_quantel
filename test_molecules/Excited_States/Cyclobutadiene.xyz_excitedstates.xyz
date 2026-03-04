@@ -2,64 +2,60 @@
 Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... 
 Frobenius norm of matrix - matrix transpose = 0.000000.
 Diagonalizing Hamiltonian using the dense matrix method ...
-Ground state energy relative to E(|0>): -3.799 eV
+Ground state energy relative to E(|0>): -2.879 eV
 State 0 0.000 eV 
 Excitation    CI Coef
-|1^ZW0>    0.80508 
-|1^ZW0'>   -0.59316 
+|1^OS>    1.00000 
 State 1 0.000 eV 
 Excitation    CI Coef
-|1^ZW0>   -0.59316 
-|1^ZW0'>   -0.80508 
-State 2 0.920 eV 
-Excitation    CI Coef
-|1^OS>    1.00000 
-State 3 0.920 eV 
-Excitation    CI Coef
 |3^OS>    1.00000 
-State 4 4.109 eV 
+State 2 1.959 eV 
 Excitation    CI Coef
-|3^HS1_1>   -0.17339 
-|3^HS2_1>    0.48182 
-|3^SL1_1'>    0.80820 
-|3^SL2_1'>    0.29084 
-State 5 4.109 eV 
+|1^ZW0>    0.70711 
+|1^ZW0'>   -0.70711 
+State 3 1.959 eV 
 Excitation    CI Coef
-|3^HS1_1>   -0.48182 
-|3^HS2_1>   -0.17339 
-|3^SL1_1'>   -0.29084 
-|3^SL2_1'>    0.80820 
-State 6 6.772 eV 
+|1^ZW0>   -0.70711 
+|1^ZW0'>   -0.70711 
+State 4 3.189 eV 
 Excitation    CI Coef
-|1^HS1_1>    0.11892 
-|1^HS2_1>   -0.49807 
-|1^SL1_1'>   -0.83546 
-|1^SL2_1'>   -0.19948 
-State 7 6.772 eV 
+|3^HS1_1>    0.44121 
+|3^HS2_1>   -0.25991 
+|3^SL1_1'>    0.43597 
+|3^SL2_1'>    0.74008 
+State 5 3.189 eV 
 Excitation    CI Coef
-|1^HS1_1>   -0.49807 
-|1^HS2_1>   -0.11892 
-|1^SL1_1'>   -0.19948 
-|1^SL2_1'>    0.83546 
-State 8 7.136 eV 
+|3^HS1_1>    0.25991 
+|3^HS2_1>    0.44121 
+|3^SL1_1'>   -0.74008 
+|3^SL2_1'>    0.43597 
+State 6 5.852 eV 
 Excitation    CI Coef
-|3^HS1_1>   -0.84332 
-|3^HS2_1>    0.16310 
-|3^SL2_1'>   -0.50276 
-State 9 7.136 eV 
+|1^HS1_1>    0.15306 
+|1^HS2_1>   -0.48866 
+|1^SL1_1'>    0.81967 
+|1^SL2_1'>    0.25674 
+State 7 5.852 eV 
 Excitation    CI Coef
-|3^HS1_1>    0.16310 
-|3^HS2_1>    0.84332 
-|3^SL1_1'>   -0.50276 
-State 10 9.799 eV 
+|1^HS1_1>    0.48866 
+|1^HS2_1>    0.15306 
+|1^SL1_1'>   -0.25674 
+|1^SL2_1'>    0.81967 
+State 8 6.216 eV 
 Excitation    CI Coef
-|1^HS1_1>    0.79057 
-|1^HS2_1>    0.33583 
-|1^SL1_1'>   -0.20021 
-|1^SL2_1'>    0.47131 
-State 11 9.799 eV 
+|3^HS1_1>    0.10843 
+|3^HS2_1>   -0.85207 
+|3^SL1_1'>   -0.50798 
+State 9 6.216 eV 
 Excitation    CI Coef
-|1^HS1_1>   -0.33583 
-|1^HS2_1>    0.79057 
-|1^SL1_1'>   -0.47131 
-|1^SL2_1'>   -0.20021 
+|3^HS1_1>   -0.85207 
+|3^HS2_1>   -0.10843 
+|3^SL2_1'>    0.50798 
+State 10 8.879 eV 
+Excitation    CI Coef
+|1^HS2_1>   -0.85655 
+|1^SL1_1'>   -0.51064 
+State 11 8.879 eV 
+Excitation    CI Coef
+|1^HS1_1>    0.85655 
+|1^SL2_1'>   -0.51064 

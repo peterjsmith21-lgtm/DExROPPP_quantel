@@ -718,8 +718,7 @@ def compute_k00(orbs,repulsion,ndocc):
 
 
 def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
-    """Calculates the total SCF energy of a fictituous system that is close to the energy of the open-shell singlet ground state. 
-       This is usually expected to be the ground state but it can sometimes be the open shell singlet.
+    """Calculates the total SCF energy of a fictituous system that is close to the energy of the open-shell singlet ground state.
 
     Returns:
         float: The total calculated SCF energy of the system from PPP theory.
@@ -728,7 +727,7 @@ def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
 
 
 #Main HF function
-def main_scf(file, params, maxcycles=500, d_tol=1e-7):
+def main_scf(file, params, maxcycles=500, d_tol=1e-15):
     '''
     main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
     
@@ -775,10 +774,10 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-7):
         if iter == maxcycles-1:
             print(f"\nEnergy not converged after {maxcycles} cycles")
             break
-        fock_mat = fock(repulsion,hopping,guess_dens,natoms_c,natoms_n,natoms,n_list)
+        fock_mat = fock(repulsion, hopping, guess_dens, natoms_c, natoms_n, natoms, n_list)
         evals, orbs = np.linalg.eigh(fock_mat)
         dens = density(orbs,ndocc)
-        energy2 = energy(hopping,repulsion,fock_mat,dens,orbs,ndocc)
+        energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
         conv_crit = np.absolute(guess_dens-dens).max()
         print(iter, energy2, conv_crit, energy2 - energy1)
         if conv_crit < d_tol:
@@ -814,7 +813,7 @@ def transform(two_body, hf_orbs):
 
 
 
-def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
+def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     '''
     Form the XCIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
     Note that the Hamiltonian basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, then the quintet,
@@ -869,7 +868,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     #8 - 13 are triplet states so have 0 interaction.
     
     # 14 <ZW0|H|ZW0>
-    cish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * k00
+    cish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] + 0.25 * j00 + 0.5 * k00 - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * k00
     #15 <ZW0|H|ZW0'>
     cish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
     cish[2,1] = cish[1,2]
@@ -900,7 +899,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     #20 - 25 are triplet states so have 0 interaction.
     
     #26 <ZW0'|H|ZW0'>
-    cish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * k00
+    cish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] + 0.25 * j00 + 0.5 * k00 - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * k00
     #27 <ZW0'|H|HS1>
     block_index = 3
     for col in range(block_index, block_index + ndocc):
@@ -936,7 +935,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
             o_orb2 = col - col_block_index
             if o_orb1 == o_orb2:
                 cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             + 1.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + k00
+                             + 1.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
             else:    
                 cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]) - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1] # CHECK SIGN
             cish[col, row] = cish[row,col]
@@ -979,7 +978,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
             o_orb2 = col - col_block_index
             if o_orb1 == o_orb2:
                 cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             + 1.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + k00
+                             + 1.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
             else:    
                 cish[row, col] = 1.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb2, o_orb1, SOMO2, SOMO2]) - 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
             cish[col, row] = cish[row,col]
@@ -1083,7 +1082,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
             o_orb2 = col - col_block_index
             if o_orb1 == o_orb2:
                 cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + k00
+                             - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
             else:    
                 cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]) - 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1] # CHECK SIGN
             cish[col, row] = cish[row,col]
@@ -1127,7 +1126,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
             if o_orb1 == o_orb2:
 
                 cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + k00
+                             - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
             else:
                 cish[row, col] = rep_tens[o_orb1, o_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
             cish[col, row] = cish[row,col]
@@ -1919,12 +1918,14 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         j00 = compute_j00(hf_orbs,repulsion,ndocc)
         k00 = compute_k00(hf_orbs,repulsion,ndocc)
         # Construct CIS Hamiltonian
-        ham_rot = cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens)
+        ham_rot = cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens)
         print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
         print("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
 
         out.write("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... \n")
         out.write("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
+        
+        print('Energy of CSFs', np.diag(ham_rot))
         
         nstates = 8 * ndocc + 4 # ONLY CIS matrix for now
         if states_cutoff_option == 'states' and states_to_print <= nstates:
