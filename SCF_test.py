@@ -705,9 +705,7 @@ def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
     Returns:
         float: The total calculated SCF energy of the system from PPP theory.
     """
-    J00 = compute_j00(orbs,repulsion,ndocc)
-    K00 = compute_k00(orbs,repulsion,ndocc)
-    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten())) - 0.25 * J00 - 0.5 * K00 
+    return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten()))
 
 #Main HF function
 def main_scf(file, params, maxcycles=500, d_tol=1e-7):

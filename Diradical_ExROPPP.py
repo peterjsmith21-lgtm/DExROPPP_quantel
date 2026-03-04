@@ -1028,7 +1028,7 @@ def cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     
     #58 - 63 are all triplets so have no interaction
     
-    col_block_index = 3 * ndocc + 3
+    row_block_index = 3 * ndocc + 3
     #64 <SL2|H|SL2>
     col_block_index = 3 * ndocc + 3
     for row in range(row_block_index, row_block_index + ndocc):
@@ -1920,7 +1920,6 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         k00 = compute_k00(hf_orbs,repulsion,ndocc)
         # Construct CIS Hamiltonian
         ham_rot = cisd_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens)
-        print(ham_rot)
         print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
         print("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
 
@@ -1957,7 +1956,6 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         # mu0u=np.einsum("j,jix",cis_coeffs[:,0].T,aku)
         # osc_array=np.zeros_like(cis_energies)
         # s2_array=np.zeros_like(cis_energies)
-        print(cis_coeffs)
         print("Ground state energy relative to E(|0>): %04.3f eV"%(cis_energies[0]-energy0))
         out.write("Ground state energy relative to E(|0>): %04.3f eV\n"%(cis_energies[0]-energy0))
         strng = ""

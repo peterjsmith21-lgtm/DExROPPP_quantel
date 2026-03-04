@@ -1,0 +1,153 @@
+                    ---------------------------------
+                    | Radical ExROPPP Calculation |
+                    ---------------------------------
+
+Molecule: Trimethylenemethane.xyz radical
+
+--------------------------------
+Cartesian Coordinates / Angstrom
+--------------------------------
+
+C     0.0000000000        0.0000000000        0.0000000000
+C    -0.7110493426        1.2315735881        0.0000000000
+C    -0.7110493426	     -1.2315735881        0.0000000000
+C     1.4220986853        0.0000000000        0.0000000000
+H    -1.8036606581        1.2519198128        0.0000000000
+H    -0.1823640323	     -2.1879758561        0.0000000000
+H     1.9860246904	     -0.9360560434        0.0000000000
+H    -0.1823640323        2.1879758561        0.0000000000
+H    -1.8036606581       -1.2519198128        0.0000000000
+H     1.9860246904        0.9360560434        0.0000000000
+
+There are 4 heavy atoms.
+There are 4 electrons in 4 orbitals.
+
+
+Carbon 1e params: A = -22.717075 b = 1.705616
+
+Nitrogen 1e params: alphan2 = -17.681338 Acn2 = -24.737202 bcn2 = 1.433639
+
+Chlorine 1e params: alphacl = -10.335674 Accl = -26.021937 bccl=1.451861
+
+Carbon 2e params: U = 8.420838 r0 = 1.173157
+
+Nitrogen 2e params: Un2n2 = 17.979843 r0n2n2 = 1.111791
+
+Chlorine 2e params: Uclcl= 9.642991 r0clcl = 2.253316
+
+Mixed 2e params: Ucn2 = 13.200341 Uccl = 9.031915 Un2cl = 13.811417 r0cn2 =1.142474 r0ccl = 1.713237 r0n2cl = 1.682554
+
+-------------------------------------
+Restricted Open-shell PPP Calculation
+-------------------------------------
+
+Starting SCF cycle...
+
+Iter   Energy        Dens Change      Energy Change
+-----------------------------------------------------
+0 -0.4412950611518296 3.956390770554208e-12 -0.4412950611518296
+
+--------------------------
+Converged ROPPP Orbitals
+--------------------------
+
+orbital number 1 energy -5.3827037382389555
+[0.71 0.41 0.41 0.41]
+orbital number 2 energy 0.0
+[ 0.    0.82 -0.42 -0.4 ]
+orbital number 3 energy 0.0
+[ 0.   -0.01 -0.7   0.71]
+orbital number 4 energy 5.382703738238957
+[-0.71  0.41  0.41  0.41]
+
+Orbital occupation numbers:
+1: 2.000000
+2: 1.000000
+3: 1.000000
+4: 0.000000
+
+------------------------
+Starting ExROPPP calculation for monoradical in rotated basis
+------------------------
+
+Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... 
+Frobenius norm of matrix - matrix transpose = 0.000000.
+
+Diagonalizing Hamiltonian using the dense matrix method ...
+
+Ground state energy relative to E(|0>): -4.619 eV
+
+State 0 0.000 eV 
+Excitation    CI Coef
+|1^ZW0>    0.70075
+|1^ZW0'>   -0.67020
+|1^SL1_1'>   -0.24273
+
+State 1 1.159 eV 
+Excitation    CI Coef
+|3^OS>    0.97803
+|3^SL2_1'>   -0.20632
+
+State 2 1.905 eV 
+Excitation    CI Coef
+|1^OS>    0.38189
+|1^ZW0>   -0.59910
+|1^ZW0'>   -0.64373
+|1^HS1_1>   -0.11602
+|1^HS2_1>   -0.21319
+|1^SL2_1'>    0.14491
+
+State 3 2.022 eV 
+Excitation    CI Coef
+|1^OS>    0.81899
+|1^ZW0>    0.28339
+|1^ZW0'>    0.30394
+|1^HS1_1>   -0.22644
+|1^SL2_1'>    0.31209
+
+State 4 5.453 eV 
+Excitation    CI Coef
+|3^HS2_1>    0.33392
+|3^SL1_1'>   -0.94138
+
+State 5 5.639 eV 
+Excitation    CI Coef
+|3^OS>    0.20327
+|3^HS1_1>   -0.34834
+|3^SL2_1'>    0.91386
+
+State 6 7.861 eV 
+Excitation    CI Coef
+|1^ZW0>    0.24174
+|1^HS2_1>   -0.30741
+|1^SL1_1'>    0.91439
+
+State 7 8.373 eV 
+Excitation    CI Coef
+|1^OS>   -0.37772
+|1^SL2_1'>    0.91984
+
+State 8 8.470 eV 
+Excitation    CI Coef
+|3^HS2_1>   -0.94138
+|3^SL1_1'>   -0.33392
+
+State 9 8.485 eV 
+Excitation    CI Coef
+|3^HS1_1>   -0.93572
+|3^SL2_1'>   -0.34641
+
+State 10 10.609 eV 
+Excitation    CI Coef
+|1^OS>    0.19791
+|1^HS1_1>    0.95093
+|1^HS2_1>   -0.13935
+|1^SL2_1'>    0.18144
+
+State 11 10.796 eV 
+Excitation    CI Coef
+|1^ZW0>    0.10599
+|1^ZW0'>    0.18728
+|1^HS1_1>   -0.14704
+|1^HS2_1>   -0.91214
+|1^SL1_1'>   -0.31327

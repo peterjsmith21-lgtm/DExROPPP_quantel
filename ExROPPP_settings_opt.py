@@ -4,8 +4,8 @@ mixing=True # controls correction to dipole moments from ground state mixing
 alt=False # invert orbital signs according to alternacy
 
 states_cutoff_option = ['none','states','energy'][1]  #cutoff for no of CIS states
-states_to_print = 25 # WARNING! This will effect no. of states to be used in simulation of spectra as well as no. of states to be printed
-energy_cutoff = 6.5 #6.5 5eV = 250nm, 6.5eV = 190nm # # WARNING! This will effect no. of states to be used in simulation of spectra as well as no. of states to be printed
+states_to_print = 40 # WARNING! This will effect no. of states to be used in simulation of spectra as well as no. of states to be printed
+energy_cutoff = 20 #6.5 5eV = 250nm, 6.5eV = 190nm # # WARNING! This will effect no. of states to be used in simulation of spectra as well as no. of states to be printed
 
 charge=0 #not truly set up to go away from half-filling but can be made to easily
 

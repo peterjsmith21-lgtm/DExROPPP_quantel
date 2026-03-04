@@ -1,0 +1,64 @@
+                    ---------------------------------
+                    | Radical ExROPPP Calculation |
+                    ---------------------------------
+
+Molecule: test_molecules/Trimethylenemethane.xyz radical
+
+--------------------------------
+Cartesian Coordinates / Angstrom
+--------------------------------
+
+C           6.0     0.0000000000        0.0000000000        0.0000000000
+C           6.0    -0.7110493426        1.2315735881        0.0000000000
+C           6.0    -0.7110493426	   -1.2315735881        0.0000000000
+C           6.0     1.4220986853        0.0000000000        0.0000000000
+H           1.0    -1.8036606581        1.2519198128        0.0000000000
+H           1.0    -0.1823640323	   -2.1879758561        0.0000000000
+H           1.0     1.9860246904	   -0.9360560434        0.0000000000
+H           1.0    -0.1823640323        2.1879758561        0.0000000000
+H           1.0    -1.8036606581       -1.2519198128        0.0000000000
+H           1.0     1.9860246904        0.9360560434        0.0000000000
+
+There are 4 heavy atoms.
+There are 4 electrons in 4 orbitals.
+
+
+Carbon 1e params: A = -22.717075 b = 1.705616
+
+Nitrogen 1e params: alphan2 = -17.681338 Acn2 = -24.737202 bcn2 = 1.433639
+
+Chlorine 1e params: alphacl = -10.335674 Accl = -26.021937 bccl=1.451861
+
+Carbon 2e params: U = 8.420838 r0 = 1.173157
+
+Nitrogen 2e params: Un2n2 = 17.979843 r0n2n2 = 1.111791
+
+Chlorine 2e params: Uclcl= 9.642991 r0clcl = 2.253316
+
+Mixed 2e params: Ucn2 = 13.200341 Uccl = 9.031915 Un2cl = 13.811417 r0cn2 =1.142474 r0ccl = 1.713237 r0n2cl = 1.682554
+
+-------------------------------------
+Restricted Open-shell PPP Calculation
+-------------------------------------
+
+Starting SCF cycle...
+
+Iter   Energy        Dens Change      Energy Change
+-----------------------------------------------------
+0 -0.4799672773551338 3.956390770554208e-12 -0.4799672773551338
+
+Energy converged after 1 cycles
+
+
+--------------------------
+Converged ROPPP Orbitals
+--------------------------
+
+orbital number 1 energy -5.3827037382389555
+[0.71 0.41 0.41 0.41]
+orbital number 2 energy 0.0
+[ 0.    0.82 -0.42 -0.4 ]
+orbital number 3 energy 0.0
+[ 0.   -0.01 -0.7   0.71]
+orbital number 4 energy 5.382703738238957
+[-0.71  0.41  0.41  0.41]
