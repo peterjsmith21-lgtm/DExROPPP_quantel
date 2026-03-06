@@ -725,6 +725,23 @@ def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
     """
     return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten()))
 
+def cartesian_operators(coords,hf_orbs):
+    natoms = coords.shape[0]
+    norbs = hf_orbs.shape[1]
+    dip1el = np.zeros((norbs,norbs,3))
+    for i in range(norbs):
+        for j in range(i,norbs):
+            for u in range(natoms):
+                dip1el[i,j,:] += hf_orbs[u,i] * coords[u,:] * hf_orbs[u,j] * tobohr
+                dip1el[j,i,:] = dip1el[i,j,:]
+    
+    x_operator = dip1el[:, :, 0]
+    y_operator = dip1el[:, :, 1]
+    z_operator = dip1el[:, :, 2]
+    full_cartesian_operator = dip1el
+    
+    return full_cartesian_operator, x_operator, y_operator, z_operator
+
 
 #Main HF function
 def main_scf(file, params, maxcycles=500, d_tol=1e-15):
@@ -754,15 +771,15 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-15):
     ndocc = int((nelec-1)/2) # no. of doubly-occupied orbitals
     print("\nThere are %d heavy atoms."%natoms)
     print("There are %d electrons in %d orbitals.\n"%(nelec,natoms))
-#compute array of dihedral angles for given molecule (originaly used predefined dictionary of angles but now they are computed directly)
+    #compute array of dihedral angles for given molecule (originaly used predefined dictionary of angles but now they are computed directly)
     angles = dihedrals(natoms_c+natoms_n+natoms_cl,atoms_array,coord,dist_array)
-#call functions to get 1/2-body "integrals"
+    #call functions to get 1/2-body "integrals"
     hopping = t_term(dist_array,natoms_c,natoms_n,natoms,n_list,angles,params)
     repulsion = v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params)
-#Diagonalize Huckel Hamiltonian to form initial density guess
+    #Diagonalize Huckel Hamiltonian to form initial density guess
     guess_evals,evecs = np.linalg.eigh(hopping)
     guess_dens = density(evecs,ndocc)
-#iterate until convergence 
+    #iterate until convergence 
     energy1=0
     print("\n-------------------------------------")
     print("Restricted Open-shell PPP Calculation")
@@ -781,11 +798,25 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-15):
         conv_crit = np.absolute(guess_dens-dens).max()
         print(iter, energy2, conv_crit, energy2 - energy1)
         if conv_crit < d_tol:
-            return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
+            break
         if energy2 > energy1:
             print('\nEnergy rises!')
         energy1 = energy2
         guess_dens = dens
+    
+    SOMO1 = ndocc
+    SOMO2 = ndocc + 1
+    assert abs(evals[SOMO1] - evals[SOMO2]) < 1e-12, "SOMOs are not degenerate!"
+    '''
+    print('\nEnforcing Spatial Symmetry in x for denerate SOMOs\n')
+    x_operator = cartesian_operators(coord,orbs)[1]
+    SOMOs_in_x_basis = x_operator[np.ix_([SOMO1, SOMO2], [SOMO1, SOMO2])]
+    _, x_rotation = np.linalg.eigh(SOMOs_in_x_basis)
+    SOMOs_x_rot = np.dot(orbs[:, [SOMO1, SOMO2]], x_rotation)
+    orbs[:, [SOMO1, SOMO2]] = SOMOs_x_rot
+    '''
+    
+    return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
 
 
 
@@ -815,9 +846,8 @@ def transform(two_body, hf_orbs):
 
 def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     '''
-    Form the XCIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
-    Note that the Hamiltonian basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, then the quintet,
-    making the Hamiltonian block diagonal with respect to spin.
+    Form the CIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
+    Note that the basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, making the Hamiltonian block diagonal.
     
     Args:
         ndocc (int): Number of doubly occupied orbitals.
@@ -845,7 +875,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     block_index = 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        cish[0,col] = 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1] - 1.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
+        cish[0,col] = 1.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]
         cish[col,0] = cish[0,col]
     #5 <OS1|H|HS2> 
     block_index = ndocc + 3
@@ -857,7 +887,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + ndocc):
         v_orb = col - block_index + (SOMO2 + 1)
-        cish[0,col] = 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2]
+        cish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
         cish[col,0] = cish[0,col]
     #7 <OS1|H|SL2>
     block_index = 3 * ndocc + 3
@@ -882,13 +912,13 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     block_index = ndocc + 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        cish[1,col] = (2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
+        cish[1,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
         cish[col, 1] = cish[1,col]
     #18 <ZW0|H|SL1>
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + ndocc):
         v_orb = col - block_index + (SOMO2 + 1)
-        cish[1,col] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] + 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - rep_tens[v_orb,SOMO1,SOMO2,SOMO2])
+        cish[1,col] = (2 ** 0.5) * (rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1])
         cish[col,1] = cish[1,col]
     #19 <ZW0|H|SL2>
     block_index = 3*ndocc + 3
@@ -904,7 +934,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     block_index = 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        cish[2,col] = (2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
+        cish[2,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
         cish[col,2] = cish[2,col]
     #28 <ZW0'|H|HS2>
     block_index = ndocc + 3
@@ -916,7 +946,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + ndocc):
         v_orb = col - block_index + (SOMO2 + 1)
-        cish[2,col] = (2 ** 0.5) * rep_tens[v_orb,SOMO2,SOMO2,SOMO1]
+        cish[2,col] = (-2 ** 0.5) * rep_tens[v_orb,SOMO2,SOMO2,SOMO1]
         cish[col,2] = cish[2,col]
     #30 <ZW0'|H|SL2>
     block_index = 3 * ndocc + 3
@@ -937,7 +967,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
                 cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
                              + 1.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
             else:    
-                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]) - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1] # CHECK SIGN
+                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]) - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]
             cish[col, row] = cish[row,col]
     #38 <HS1|H|HS2>
     col_block_index = ndocc + 3
@@ -949,7 +979,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
                 cish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO1, SOMO1] \
                              + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
             else:    
-                cish[row, col] = rep_tens[o_orb1, o_orb2, SOMO1, SOMO2] + rep_tens[o_orb1, SOMO1, SOMO2, o_orb2] # CHECK SIGN
+                cish[row, col] = - rep_tens[o_orb1, o_orb2, SOMO1, SOMO2] - rep_tens[o_orb1, SOMO1, SOMO2, o_orb2]
             cish[col, row] = cish[row, col]
     #39 <HS1|H|SL1>
     col_block_index = 2 * ndocc + 3
@@ -957,7 +987,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + ndocc):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb] - rep_tens[o_orb, SOMO1, SOMO2, v_orb] # CHECK SIGN
+            cish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
             cish[col, row] = cish[row,col]
     #40 <HS1|H|SL2>
     col_block_index = 3*ndocc + 3
@@ -965,7 +995,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + ndocc):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb] # CHECK SIGN
+            cish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb]
             cish[col, row] = cish[row,col]
     # 41 - 46 are triplets so have no interaction
     
@@ -988,7 +1018,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + ndocc):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO2, SOMO2, v_orb]
+            cish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
             cish[col, row] = cish[row, col]
     #49 <HS2|H|SL2>
     col_block_index = 3 * ndocc + 3
@@ -1020,9 +1050,9 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
         for col in range(col_block_index, col_block_index + ndocc):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                cish[row, col] = rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] + rep_tens[v_orb1, SOMO1, SOMO2, v_orb1] - 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
+                cish[row, col] = 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO1, SOMO2, v_orb1]
             else:    
-                cish[row, col] = rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] + rep_tens[v_orb1, SOMO2, SOMO1, v_orb2]
+                cish[row, col] = - rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, v_orb2]
             cish[col, row] = cish[row,col]
     
     #58 - 63 are all triplets so have no interaction
@@ -1064,7 +1094,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
     col_index = 6 * ndocc + 4
     for col in range(col_index, col_index + ndocc):
         v_orb = col - col_index + (SOMO2 + 1)
-        cish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb, SOMO1, SOMO2, SOMO1]
+        cish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO2, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
         cish[col, row_index] = cish[row_index,col]
     #73 <OS3|H|SL2>
     col_index = 7 * ndocc + 4
@@ -1084,7 +1114,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
                 cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
                              - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
             else:    
-                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]) - 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1] # CHECK SIGN
+                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]) - 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
             cish[col, row] = cish[row,col]
     #75 <HS1|H|HS2>
     col_block_index = 5 * ndocc + 4
@@ -1096,7 +1126,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
                 cish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO2, SOMO1, SOMO1, SOMO1] \
                              + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]                                                               #CHECK RESULT, SAME AS SINGLET?
             else:    
-                cish[row, col] = rep_tens[o_orb2, SOMO1, SOMO2, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO2] # CHECK SIGN
+                cish[row, col] = rep_tens[o_orb2, o_orb1, SOMO1, SOMO2] - rep_tens[o_orb2, SOMO1, SOMO2, o_orb1]
             cish[col, row] = cish[row,col]
     #76 <HS1|H|SL1>
     col_block_index = 6 * ndocc + 4
@@ -1104,7 +1134,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + ndocc):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] # CHECK SIGN
+            cish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb] # CHECK SIGN
             cish[col, row] = cish[row,col]
     #77 <HS1|H|SL2>
     col_block_index = 7 * ndocc + 4
@@ -1136,7 +1166,7 @@ def cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + ndocc):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO2, SOMO2, v_orb]
+            cish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
             cish[col, row] = cish[row,col]
     #80 <HS2|H|SL2>
     col_block_index = 7 * ndocc + 4
@@ -1219,9 +1249,9 @@ def write_gnu(strng,file):
     return
 
    
-def spin(ndocc,norbs,cis_coeffs,nstates,cis_option,hetero):
+def spin(ndocc, cis_coeffs, nstates):
     '''
-    Forms the S^2 matrix projected into the XCIS basis by first .
+    Forms the S^2 matrix projected into the basis of CSFs.
     
     Parameters:
         ndocc (int): Number of doubly occupied orbitals in the system.
@@ -1236,269 +1266,69 @@ def spin(ndocc,norbs,cis_coeffs,nstates,cis_option,hetero):
         deltassq (int): Standard deviation for S^2 values in a pure doublet state, used for assessing spin contamination.
     '''
     spinmat = np.zeros((nstates,nstates)) 
-    if hetero=='no':
-        #1 <0|S**2|0>
-        spinmat[0,0] = 0.75
-        #2 <0|S**2|ibar->0bar> = 0
-        #3 <0|S**2|0->j'>  = 0
-        #4 <0|S**2|i->j'>  = 0
-        #5 <0|S**2|ibar->jbar'>  = 0  
-        #6 <0|S**2|ibar->0bar,0->j'>  = 0
-        #7 <ibar->0bar|S**2|kbar->0bar> only non-zero if i==k 
-        for i in range(ndocc):
-            spinmat[i+1,i+1] = 0.75
-        #8 <kbar->0bar|S**2|0->j'> = 0      
-        #9 <kbar->0bar|S**2|i->j'> = 0     
-        #10 <kbar->0bar|S**2|ibar->jbar'> = 0 
-        #11 <kbar->0bar|S**2|ibar->0bar,0->j'> = 0 
-        #12 <0->l'|S**2|0->j'>
-        for j in range(ndocc):
-            spinmat[j+ndocc+1,j+ndocc+1] = 0.75
-        #13 <0->l'|S**2|i->j'> = 0
-        #14 <0->l'|S**2|ibar->jbar'> = 0  
-        #15 <0->l'|S**2|ibar->0bar,0->j'> = 0          
-        #16 <k->l'|S**2|i->j'>
-        for m in range(ndocc**2):
-            mm = m+2*ndocc+1
-            spinmat[mm,mm] = 7/4   
-        #17 <k->l'|S**2|ibar->jbar'> 
-        for m in range(ndocc**2):
-            mm = m+2*ndocc+1
-            nn = m+ndocc**2+2*ndocc+1
-            spinmat[mm,nn] = -1
-            spinmat[nn,mm] = spinmat[mm,nn]
-        #18 <k->l'|S**2|ibar->0bar,0->j'> 
-        if cis_option == 'cisd':
-            for m in range(ndocc**2):
-                mm = m+2*ndocc+1
-                nn = m+2*ndocc**2+2*ndocc+1
-                spinmat[mm,nn] = 1
-                spinmat[nn,mm] = spinmat[mm,nn]
-        #19 <kbar->lbar'|S**2|ibar->jbar'>
-        for m in range(ndocc**2):
-            mm = m+ndocc**2+2*ndocc+1
-            spinmat[mm,mm] = 7/4 
-        #20 <kbar->lbar'|S**2|ibar->0bar,0->j'> 
-        if cis_option == 'cisd':
-            for m in range(ndocc**2):
-                mm = m+ndocc**2+2*ndocc+1
-                nn = m+2*ndocc**2+2*ndocc+1
-                spinmat[mm,nn] = -1 
-                spinmat[nn,mm] = spinmat[mm,nn]
-        #21 <kbar->0bar,0->l'|S**2|ibar->0bar,0->j'>
-        if cis_option == 'cisd':
-            for m in range(ndocc**2):
-                mm = m+2*ndocc**2+2*ndocc+1
-                spinmat[mm,mm] = 7/4
-    if hetero=='yes':
-        nunocc = norbs-ndocc-1
-        #1 <0|S**2|0>
-        spinmat[0,0] = 0.75
-        #2 <0|S**2|ibar->0bar> = 0
-        #3 <0|S**2|0->j'>  = 0
-        #4 <0|S**2|i->j'>  = 0
-        #5 <0|S**2|ibar->jbar'>  = 0  
-        #6 <0|S**2|ibar->0bar,0->j'>  = 0
-        #7 <ibar->0bar|S**2|kbar->0bar> only non-zero if i==k
-        for i in range(ndocc):
-            spinmat[i+1,i+1] = 0.75
-        #8 <kbar->0bar|S**2|0->j'> = 0      
-        #9 <kbar->0bar|S**2|i->j'> = 0     
-        #10 <kbar->0bar|S**2|ibar->jbar'> = 0 
-        #11 <kbar->0bar|S**2|ibar->0bar,0->j'> = 0 
-        #12 <0->l'|S**2|0->j'>
-        for j in range(nunocc):
-            spinmat[j+ndocc+1,j+ndocc+1] = 0.75
-        #13 <0->l'|S**2|i->j'> = 0
-        #14 <0->l'|S**2|ibar->jbar'> = 0  
-        #15 <0->l'|S**2|ibar->0bar,0->j'> = 0  
-        #16 <k->l'|S**2|i->j'>
-        for m in range(ndocc*nunocc):
-            mm = m+ndocc+nunocc+1
-            spinmat[mm,mm] = 7/4
-        #17 <k->l'|S**2|ibar->jbar'> 
-        for m in range(ndocc*nunocc):
-            mm = m+ndocc+nunocc+1
-            nn = m+ndocc+nunocc+ndocc*nunocc+1
-            spinmat[mm,nn] = -1
-            spinmat[nn,mm] = spinmat[mm,nn]   
-        #18 <k->l'|S**2|ibar->0bar,0->j'> 
-        for m in range(ndocc*nunocc):
-            mm = m+ndocc+nunocc+1
-            nn = m+ndocc+nunocc+2*ndocc*nunocc+1
-            spinmat[mm,nn] = 1
-            spinmat[nn,mm] = spinmat[mm,nn]
-        #19 <kbar->lbar'|S**2|ibar->jbar'>  
-        for m in range(ndocc*nunocc):
-            mm = m+ndocc+nunocc+ndocc*nunocc+1
-            spinmat[mm,mm] = 7/4 
-        #20 <kbar->lbar'|S**2|ibar->0bar,0->j'> 
-        for m in range(ndocc*nunocc):
-            mm = m+ndocc+nunocc+ndocc*nunocc+1
-            nn = m+ndocc+nunocc+2*ndocc*nunocc+1
-            spinmat[mm,nn] = -1 
-            spinmat[nn,mm] = spinmat[mm,nn]    
-        #21 <kbar->0bar,0->l'|S**2|ibar->0bar,0->j'>
-        for m in range(ndocc*nunocc): 
-            mm = m+ndocc+nunocc+2*ndocc*nunocc+1
-            spinmat[mm,mm] = 7/4          
+    ######## Singlet Block ########
+    #1 <OS1|S**2|OS1> = 0
+    #2 <OS1|S**2|ZW0> = 0
+    #3 <OS1|S**2|ZW0'>  = 0
+    #4 <OS1|S**2|HS1>  = 0
+    #5 <OS1|S**2|HS2>  = 0
+    #6 <OS1|S**2|SL1>  = 0
+    #7 <OS1|S**2|SL2>  = 0
+    ####### Entire Singlet block will be 0 #######
+    
+    #8 <OS3|S**2|OS3> = 2
+    spinmat[4 * ndocc + 3, 4 * ndocc + 3] = 2
+    #11 <OS3|S**2|HS1>  = 0
+    #12 <OS3|S**2|HS2>  = 0
+    #13 <OS3|S**2|SL1>  = 0
+    #14 <OS3|S**2|SL2>  = 0
+    
+    #15 <HS1|S**2|HS1>  = 2  Only when same orbital is excited
+    for i in range(4 * ndocc + 4, 5 * ndocc + 4):
+        spinmat[i, i] = 2
+    #16 <HS1|S**2|HS2>  = 0
+    #17 <HS1|S**2|SL1>  = 0
+    #18 <HS1|S**2|SL2>  = 0
+
+    #19 <HS2|S**2|HS2>  = 2  Only when same orbital is excited
+    for i in range(5 * ndocc + 4, 6 * ndocc + 4):
+        spinmat[i, i] = 2
+    #20 <HS2|S**2|SL1>  = 0
+    #21 <HS2|S**2|SL2>  = 0
+    
+    #26 <SL1|S**2|SL1>  = 2  Only when same orbital is excited
+    for i in range(6 * ndocc + 4, 7 * ndocc + 4):
+        spinmat[i, i] = 2
+    #27 <SL1|S**2|SL2>  = 0
+    
+    #28 <SL2|S**2|SL2>  = 2 Only when same orbital is excited
+    for i in range(7 * ndocc + 4, 8 * ndocc + 4):
+        spinmat[i, i] = 2
+                    
     s2=np.dot(cis_coeffs.T,np.dot(spinmat,cis_coeffs))
     s4=np.dot(cis_coeffs.T,np.dot(spinmat,np.dot(spinmat,cis_coeffs)))
     deltassq = np.sqrt(np.abs(s4-s2**2))
-    return s2, deltassq  
+    return s2, deltassq
 
-def dipole(coords,atoms,norbs,hforbs,ndocc,nstates,basis,cis_option,hetero):
-    print("Calculating dipole moments ...\n")
-    # Routine to calculate the one electron dipole moment matrix (x, y and z) 
-    # in the basis of orbitals, and then the dipole moment matrix in the basis
-    # of excitations from the many electron determinant
+
+def dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates,hetero):
+    '''
+    Routine to calculate the one electron dipole moment matrix (x, y and z) in the basis of orbitals, 
+    and then the dipole moment matrix in the basis of csfs.
+    
+    '''
     natoms = coords.shape[0]
-    o0 = ndocc   
-    dip1el = np.zeros((norbs,norbs,3))
-    for i in range(norbs):
-        for j in range(i,norbs):
-            for u in range(natoms):
-                # for x in range(3):
-                #     dip1el[i,j,x] += hforbs[u,i]*coords[u,x]*hforbs[u,j]*tobohr
-                #     dip1el[j,i,x] = dip1el[i,j,x]
-                dip1el[i,j,:] += hforbs[u,i]*coords[u,:]*hforbs[u,j]*tobohr
-                dip1el[j,i,:] = dip1el[i,j,:]
-   # print("Checking one electron dipole moment array is symmetric (a value of zero means matrix is symmetric) ...")
+    print("Calculating dipole moments ...\n")
+    dip1el = cartesian_operators(coords,hf_orbs)[0]
+    o0 = ndocc
+
    # print("x norm= %f"%linalg.norm(dip1el[:,:,0] - dip1el[:,:,0].T))  # checking symmetric
    # print("y norm= %f"%linalg.norm(dip1el[:,:,1] - dip1el[:,:,1].T))
    # print("z norm= %f"%linalg.norm(dip1el[:,:,2] - dip1el[:,:,2].T))
    # print(" ")
     dipoles = np.zeros((nstates,nstates,3)) 
-    if basis=='xct' and hetero=='no':
-        #1 <0|mu|0>
-        for m in range(ndocc):
-            dipoles[0,0,:] -= 2*dip1el[m,m,:]
-        dipoles[0,0,:] -= dip1el[o0,o0,:]
-        #2 <0|mu|ibar->0bar> 
-        for i in range(ndocc):
-            dipoles[0,i+1,:] = -dip1el[i,o0,:]
-            dipoles[i+1,0,:] = dipoles[0,i+1,:] 
-        #3 <0|mu|0->j'>
-        for j in range (ndocc):
-            dipoles[0,j+ndocc+1,:] = -dip1el[o0,j+ndocc+1,:]
-            dipoles[j+ndocc+1,0,:] = dipoles[0,j+ndocc+1,:]
-        #4 <0|mu|i->j'> 
-        for n in range (ndocc**2):
-            nn = n+2*ndocc+1
-            i = int(np.floor(n/ndocc))
-            j = n-i*ndocc+ndocc +1
-            dipoles[0,nn,:] = -dip1el[i,j,:]
-            dipoles[nn,0,:] = dipoles[0,nn,:]
-        #5 <0|mu|ibar->jbar'>
-        for n in range (ndocc**2):
-                nn = n+ndocc**2+2*ndocc+1
-                i = int(np.floor(n/ndocc))
-                j = n-i*ndocc+ndocc +1
-                dipoles[0,nn,:] = -dip1el[i,j,:]
-                dipoles[nn,0,:] = dipoles[0,nn,:]
-        #6 <0|mu|ibar->0bar,0->j'> = 0
-        if mixing==True:
-            print("Dipole moments are corrected for ground state mixing of excited configurations")
-            #7 <kbar->0bar|mu|ibar->0bar> CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            
-            for i in range(ndocc):
-                for k in range(ndocc):
-                    dipoles[i+1,k+1,:] = +dip1el[i,k,:] 
-                    if i==k:
-                        dipoles[i+1,k+1,:] += dipoles[0,0,:] - dip1el[o0,o0,:]
-                    
-            #8 <kbar->0bar|mu|0->j'> = 0
-            #9 <kbar->0bar|mu|i->j'> = 0
-            #10 <kbar->0bar|mu|ibar->jbar'>
-            for n in range(ndocc**2):
-                    nn = n+ndocc**2+2*ndocc+1
-                    i = int(np.floor(n/ndocc))
-                    j = n-i*ndocc+ndocc +1
-                    dipoles[i+1,nn,:] = -dip1el[o0,j,:]
-                    dipoles[nn,i+1,:] = dipoles[i+1,nn,:]  
-            #11 <kbar->0bar|mu|ibar->0bar,0->j'>
-            if cis_option == 'cisd':
-                for n in range(ndocc**2):
-                        nn = n+2*ndocc**2+2*ndocc+1
-                        i = int(np.floor(n/ndocc))
-                        j = n-i*ndocc+ndocc +1
-                        dipoles[i+1,nn,:] = -dip1el[o0,j,:]
-                        dipoles[nn,i+1,:] = dipoles[i+1,nn,:]
-            #12 <0->l'|mu|0->j'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for j in range(ndocc):
-                    for l in range(ndocc):
-                        dipoles[j+ndocc+1,l+ndocc+1,:] = -dip1el[j+ndocc+1,l+ndocc+1,:]
-                        if j==l:
-                           dipoles[j+ndocc+1,l+ndocc+1,:] += dipoles[0,0,:] + dip1el[o0,o0,:]
-            #13 <0->l'|mu|i->j'>
-            for n in range(ndocc**2):
-                nn = n+2*ndocc+1
-                i = int(np.floor(n/ndocc))
-                j = n-i*ndocc+ndocc +1
-                dipoles[j,nn,:] = dip1el[i,o0,:]
-                dipoles[nn,j,:] = dipoles[j,nn,:]
-            #14 <0->l'|mu|ibar->jbar'> = 0
-            #15 <0->l'|mu|ibar->0bar,0->j'>
-            if cis_option == 'cisd':
-                for n in range(ndocc**2):
-                        nn = n+2*ndocc**2+2*ndocc+1
-                        i = int(np.floor(n/ndocc))
-                        j = n-i*ndocc+ndocc +1
-                        dipoles[j,nn,:] = -dip1el[i,o0,:]
-                        dipoles[nn,j,:] = dipoles[j,nn,:]
-            #16 <k->l'|mu|i->j'> CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for m in range(ndocc**2):
-                     mm = m+2*ndocc+1
-                     k = int(np.floor(m/ndocc))
-                     l = m-k*ndocc+ndocc +1
-                     for n in range (ndocc**2):
-                         nn = n+2*ndocc+1
-                         i = int(np.floor(n/ndocc))
-                         j = n-i*ndocc+ndocc +1
-                         if i==k:
-                             dipoles[mm,nn,:] = -dip1el[j,l,:]
-                         if j==l:
-                             dipoles[mm,nn,:] += dip1el[i,k,:]
-                         if i==k and j==l:
-                             dipoles[mm,nn,:] += dipoles[0,0,:]
-            #17 <k->l'|mu|ibar->jbar'> = 0
-            #18 <k->l'|mu|ibar->0bar,0->j'> = 0
-            #19 <kbar->lbar'|mu|ibar->jbar'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for m in range(ndocc**2):
-                mm = m+ndocc**2+2*ndocc+1
-                k = int(np.floor(m/ndocc))
-                l = m-k*ndocc+ndocc +1
-                for n in range (ndocc**2):
-                    nn = n+ndocc**2+2*ndocc+1
-                    i = int(np.floor(n/ndocc))
-                    j = n-i*ndocc+ndocc +1
-                    if i==k:
-                        dipoles[mm,nn,:] = -dip1el[j,l,:]
-                    if j==l:
-                        dipoles[mm,nn,:] += dip1el[i,k,:]
-                    if i==k and j==l:
-                        dipoles[mm,nn,:] += dipoles[0,0,:]
-            #20 <kbar->lbar'|mu|ibar->0bar,0->j'> = 0
-            #21 <kbar->0bar,0->l'|mu|ibar->0bar,0->j'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            if cis_option == 'cisd':
-                for m in range(ndocc**2):
-                        mm = m+2*ndocc**2+2*ndocc+1
-                        k = int(np.floor(m/ndocc))
-                        l = m-k*ndocc+ndocc +1
-                        for n in range (ndocc**2):
-                            nn = n+2*ndocc**2+2*ndocc+1
-                            i = int(np.floor(n/ndocc))
-                            j = n-i*ndocc+ndocc +1
-                            if i==k:
-                                dipoles[mm,nn,:] = -dip1el[j,l,:]
-                            if j==l:
-                                dipoles[mm,nn,:] += dip1el[i,k,:]
-                            if i==k and j==l:
-                                dipoles[mm,nn,:] += dipoles[0,0,:]
-            #print(linalg.norm(dipoles[:,:,0] - dipoles[:,:,0].T))  # checking symmetric
-           # print(linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
-           # print(linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))
-    if basis == 'rot' and hetero=='no':
+    
+    if hetero=='no':
         #1 <0|mu|0>
         for m in range(ndocc):
                 dipoles[0,0,:] -= 2*dip1el[m,m,:]
@@ -1619,140 +1449,8 @@ def dipole(coords,atoms,norbs,hforbs,ndocc,nstates,basis,cis_option,hetero):
             #print("%10.5f"%linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
             #print("%10.5f"%linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))   
             
-    if basis=='xct' and hetero=='yes':
-        nunocc = norbs-ndocc-1
-        #1 <0|mu|0>
-        for m in range(ndocc):
-            dipoles[0,0,:] -= 2*dip1el[m,m,:]
-        dipoles[0,0,x] -= dip1el[o0,o0,x]
-        #2 <0|mu|ibar->0bar> 
-        for i in range(ndocc):
-            dipoles[0,i+1,:] = -dip1el[i,o0,:]
-            dipoles[i+1,0,:] = dipoles[0,i+1,:] 
-        #3 <0|mu|0->j'>
-        for j in range (nunocc):
-            dipoles[0,j+ndocc+1,:] = -dip1el[o0,j+ndocc+1,:]
-            dipoles[j+ndocc+1,0,:] = dipoles[0,j+ndocc+1,:]
-        #4 <0|mu|i->j'> 
-
-        for n in range (ndocc*nunocc):
-            nn = n+ndocc+nunocc+1
-            i = int(np.floor(n/nunocc))
-            j = n-i*nunocc+ndocc +1
-            dipoles[0,nn,:] = -dip1el[i,j,:]
-            dipoles[nn,0,:] = dipoles[0,nn,:]
-        #5 <0|mu|ibar->jbar'>
-
-        for n in range (ndocc*nunocc):
-            nn = n+ndocc+nunocc+ndocc*nunocc+1
-            i = int(np.floor(n/nunocc))
-            j = n-i*nunocc+ndocc +1
-            dipoles[0,nn,:] = -dip1el[i,j,:]
-            dipoles[nn,0,:] = dipoles[0,nn,:]
-        #6 <0|mu|ibar->0bar,0->j'> = 0
-        if mixing==True:
-            print("Dipole moments are corrected for ground state mixing of excited configurations")
-            #7 <kbar->0bar|mu|ibar->0bar>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for i in range(ndocc):
-                for k in range(ndocc):
-                    dipoles[i+1,k+1,:] = +dip1el[i,k,:] 
-                    if i==k:
-                        dipoles[i+1,k+1,:] += dipoles[0,0,:] - dip1el[o0,o0,:]
-            #8 <kbar->0bar|mu|0->j'> = 0
-            #9 <kbar->0bar|mu|i->j'> = 0
-            #10 <kbar->0bar|mu|ibar->jbar'>
-            for x in range(3):
-                for n in range(ndocc*nunocc):
-                    nn = n+ndocc+nunocc+ndocc*nunocc+1
-                    i = int(np.floor(n/nunocc))
-                    j = n-i*nunocc+ndocc +1
-                    dipoles[i+1,nn,x] = -dip1el[o0,j,x]
-                    dipoles[nn,i+1,x] = dipoles[i+1,nn,x]  
-            #11 <kbar->0bar|mu|ibar->0bar,0->j'>
-            for x in range(3):
-               for n in range(ndocc*nunocc):
-                    nn = n+ndocc+nunocc+2*(ndocc*nunocc)+1
-                    i = int(np.floor(n/nunocc))
-                    j = n-i*nunocc+ndocc +1
-                    dipoles[i+1,nn,x] = -dip1el[o0,j,x]
-                    dipoles[nn,i+1,x] = dipoles[i+1,nn,x]
-            #12 <0->l'|mu|0->j'> CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for x in range(3):
-                for j in range(nunocc):
-                    for l in range(nunocc):
-                        dipoles[j+ndocc+1,l+ndocc+1,x] = -dip1el[j+ndocc+1,l+ndocc+1,x]
-                        if j==l:
-                           dipoles[j+ndocc+1,l+ndocc+1,x] += dipoles[0,0,x] + dip1el[o0,o0,x]
-            #13 <0->l'|mu|i->j'>
-            for x in range(3):
-                for n in range(ndocc*nunocc):
-                    nn = n+ndocc+nunocc+1
-                    i = int(np.floor(n/nunocc))
-                    j = n-i*nunocc+ndocc +1
-                    dipoles[j,nn,x] = dip1el[i,o0,x]
-                    dipoles[nn,j,x] = dipoles[j,nn,x]
-            #14 <0->l'|mu|ibar->jbar'> = 0
-            #15 <0->l'|mu|ibar->0bar,0->j'>
-            for x in range(3):
-                for n in range(ndocc*nunocc):
-                    nn = n+ndocc+nunocc+2*(ndocc*nunocc)+1
-                    i = int(np.floor(n/nunocc))
-                    j = n-i*nunocc+ndocc +1
-                    dipoles[j,nn,x] = -dip1el[i,o0,x]
-                    dipoles[nn,j,x] = dipoles[j,nn,x]
-            #16 <k->l'|mu|i->j'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for x in range(3):
-                 for m in range(ndocc*nunocc):
-                     mm = m+ndocc+nunocc+1
-                     k = int(np.floor(m/nunocc))
-                     l = m-k*nunocc+ndocc +1
-                     for n in range (ndocc*nunocc):
-                         nn = n+ndocc+nunocc+1
-                         i = int(np.floor(n/nunocc))
-                         j = n-i*nunocc+ndocc +1
-                         if i==k:
-                             dipoles[mm,nn,x] = -dip1el[j,l,x]
-                         if j==l:
-                             dipoles[mm,nn,x] += dip1el[i,k,x]
-                         if i==k and j==l:
-                             dipoles[mm,nn,x] += dipoles[0,0,x]
-            #17 <k->l'|mu|ibar->jbar'> = 0
-            #18 <k->l'|mu|ibar->0bar,0->j'> = 0
-            #19 <kbar->lbar'|mu|ibar->jbar'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for x in range(3):
-                for m in range(ndocc*nunocc):
-                    mm = m+ndocc+nunocc+ndocc*nunocc+1
-                    k = int(np.floor(m/nunocc))
-                    l = m-k*nunocc+ndocc +1
-                    for n in range (ndocc*nunocc):
-                        nn = n+ndocc+nunocc+ndocc*nunocc+1
-                        i = int(np.floor(n/nunocc))
-                        j = n-i*nunocc+ndocc +1
-                        if i==k:
-                            dipoles[mm,nn,x] = -dip1el[j,l,x]
-                        if j==l:
-                            dipoles[mm,nn,x] += dip1el[i,k,x]
-                        if i==k and j==l:
-                            dipoles[mm,nn,x] += dipoles[0,0,x]
-            #20 <kbar->lbar'|mu|ibar->0bar,0->j'> = 0
-            #21 <kbar->0bar,0->l'|mu|ibar->0bar,0->j'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for x in range(3):
-                for m in range(ndocc*nunocc):
-                    mm = m+ndocc+nunocc+2*(ndocc*nunocc)+1
-                    k = int(np.floor(m/nunocc))
-                    l = m-k*nunocc+ndocc +1
-                    for n in range (ndocc*nunocc):
-                        nn = n+ndocc+nunocc+2*(ndocc*nunocc)+1
-                        i = int(np.floor(n/nunocc))
-                        j = n-i*nunocc+ndocc +1
-                        if i==k:
-                            dipoles[mm,nn,x] = -dip1el[j,l,x]
-                        if j==l:
-                            dipoles[mm,nn,x] += dip1el[i,k,x]
-                        if i==k and j==l:
-                            dipoles[mm,nn,x] += dipoles[0,0,x]
     
-    if basis == 'rot' and hetero=='yes':
+    if hetero=='yes':
         nunocc = norbs-ndocc-1
         #1 <0|mu|0>
         for m in range(ndocc):
@@ -1885,7 +1583,7 @@ def dipole(coords,atoms,norbs,hforbs,ndocc,nstates,basis,cis_option,hetero):
    
 
 
-def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file):
+def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file, cis_type = "CIS"):
     '''
     Calculates monoradical excited states in rotated (CSF) basis using the CISD method. Used for molecules without Nitrogen or Chlorine present.
     
@@ -1918,7 +1616,10 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         j00 = compute_j00(hf_orbs,repulsion,ndocc)
         k00 = compute_k00(hf_orbs,repulsion,ndocc)
         # Construct CIS Hamiltonian
-        ham_rot = cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens)
+        if cis_type == 'CIS':
+            ham_rot = cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens)
+        else:
+            ham_rot = cis_ham_rot(ndocc, energy0, orb_energies, j00, k00, rep_tens) # Change to CISD when made
         print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
         print("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
 
@@ -1927,7 +1628,7 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
         
         print('Energy of CSFs', np.diag(ham_rot))
         
-        nstates = 8 * ndocc + 4 # ONLY CIS matrix for now
+        nstates = ham_rot.shape[0]
         if states_cutoff_option == 'states' and states_to_print <= nstates:
             rng = states_to_print
             print('Lowest %d states. WARNING - Some states may not be included in the spectrum.\n'%states_to_print)
@@ -1967,78 +1668,78 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
             print("Excitation    CI Coef")
             out.write("State %s %04.3f eV \n" % (i, cis_energies[i] - cis_energies[0])) #print("State %s %04.3f eV \n" % (i,energy-cis_energies[0]))
             out.write("Excitation    CI Coef\n")
-            # spin = 0 # initialise total spin
+            spin = 0 # initialise total spin
             for j in range (cis_coeffs.shape[0]): # Loop over configurations in each CIS state
                 ########### SINGLET CSFS ############   
             # if configuration is the open shell singlet ground state (|OS1>)
                 if j == 0: 
                     str = "|1^OS>"
-                    # spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    # S^2 = 0
             # if configuration is Zwitterion 0 (|ZW0>)    
                 elif j == 1:
                     str = "|1^ZW0>"
-                    # spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    # S^2 = 0
             # if configuration is Zwitterion 0' (|ZW0'>)   
                 elif j == 2:
                     str = "|1^ZW0'>"
-                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    # S^2 = 0
             # if configuration is Singlet Homo to SOMO 1 (|1^HS1>)
                 elif j > 2 and j <= ndocc + 2:
                     iorb = ndocc + 3 - j
                     str = f"|1^HS1_{iorb}>" 
-                    # spin += 3.75*cis_coeffs[j,i]**2 # (S=1.5) 
+                    # S^2 = 0 
             # if configuration is Singlet Homo to SOMO 2 (|1^HS2>)
                 elif j > ndocc + 2 and j <= (2 * ndocc + 2):
                     iorb = 2 * ndocc + 3 - j
                     str = f"|1^HS2_{iorb}>" 
-                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    # S^2 = 0
             # if configuration is Singlet SOMO to LUMO 1 (|1^SL1>)
                 elif j > (2 * ndocc + 2) and j <= (3 * ndocc + 2):
                     iorb = 3 * ndocc + 3 - j
                     str = f"|1^SL1_{iorb}'>"
-                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    # S^2 = 0
             # if configuration is Singlet SOMO to LUMO 2 (|1^SL2>)
                 elif j > (3 * ndocc + 2) and j <= (4 * ndocc + 2):
                     iorb = 4 * ndocc + 3 - j
                     str = f"|1^SL2_{iorb}'>"
-                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    # S^2 = 0
                     
                 ########### TRIPLET CSFs ###########
             # if configuration is the open shell Triplet ground state (|OS3>)
                 if j == (4 * ndocc + 3): 
                     str = "|3^OS>"
-                    # spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    spin += 2 * cis_coeffs[j,i]**2 # (S=1)
             # if configuration is Triplet Homo to SOMO 1 (|3^HS1>)
                 elif j > (4 * ndocc + 3) and j <= (5 * ndocc + 3):
                     iorb = 5 * ndocc + 4 - j
                     str = f"|3^HS1_{iorb}>" 
-                    # spin += 3.75*cis_coeffs[j,i]**2 # (S=1.5) 
+                    spin += 2 * cis_coeffs[j,i]**2 # (S=1) 
             # if configuration is Triplet Homo to SOMO 2 (|3^HS2>)
                 elif j > (5 * ndocc + 3) and j <= (6 * ndocc + 3):
                     iorb = 6 * ndocc + 4 - j
                     str = f"|3^HS2_{iorb}>" 
-                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    spin += 2 * cis_coeffs[j,i]**2 # (S=1)
             # if configuration is Triplet SOMO to LUMO 1 (|3^SL1>)
                 elif j > (6 * ndocc + 3) and j <= (7 * ndocc + 3):
                     iorb = 7 * ndocc + 4 - j
                     str = f"|3^SL1_{iorb}'>"
-                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    spin += 2 * cis_coeffs[j,i]**2 # (S=1)
             # if configuration is Triplet SOMO to LUMO 2 (|3^SL2>)
                 elif j > (7 * ndocc + 3) and j <= (8 * ndocc + 3):
                     iorb = 8 * ndocc + 4 - j
                     str = f"|3^SL2_{iorb}'>"
-                    #spin += 0.75*cis_coeffs[j,i]**2 # (S=0.5)
+                    spin += 2 * cis_coeffs[j,i]**2 # (S=1)
                 if np.absolute(cis_coeffs[j,i]) > 1e-1: # SHOULD BE ABLE TO CHANGE THIS CSF TOLERANCE
                     print("%s %10.5f" %(str,cis_coeffs[j,i]))
                     out.write("%s %10.5f \n" %(str,cis_coeffs[j,i]))
-            '''
+                    
             if i==0:
                 print("\n<S**2>: %04.3f" %spin)
                 print("--------------------------------------------------------------------\n")
                 out.write("<S**2>: %04.3f\n" %spin)
                 out.write("--------------------------------------------------------------------\n")
                 continue
-            '''
+
             #osc = 2.0/3.0*((cis_energies[i]-cis_energies[0])/toev)*(mu0u[i,0]**2+mu0u[i,1]**2+mu0u[i,2]**2) 
             #osc_array[i]=osc
             #s2_array[i]=spin
@@ -2316,11 +2017,11 @@ def hetero_cisd(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs,
             out.write("Diagonalizing Hamiltonian using the dense matrix method ...\n")
             cis_energies,cis_coeffs=linalg.eigh(cis_ham_het)
         # Calculate S**2 matrix
-        s_squared,deltassq = spin(ndocc,norbs,cis_coeffs,nstates,'cisd','yes')
+        s_squared,deltassq = spin(ndocc,cis_coeffs,nstates)
         #print("\nCheck spin mat is symmetric")
         #print(linalg.norm(s_squared - s_squared.T)) 
         # Calculate dipole moment array
-        dip_array = dipole(coords,atoms,norbs,hf_orbs,ndocc,nstates,'xct','cisd','yes')
+        dip_array = dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates,'xct','cisd','yes')
         aku=np.einsum("ijx,jk",dip_array,cis_coeffs)
         mu0u=np.einsum("j,jix",cis_coeffs[:,0].T,aku)
         rt = 2.**.5
