@@ -807,14 +807,14 @@ def main_scf(file, params, maxcycles=500, d_tol=1e-15):
     SOMO1 = ndocc
     SOMO2 = ndocc + 1
     assert abs(evals[SOMO1] - evals[SOMO2]) < 1e-12, "SOMOs are not degenerate!"
-    '''
+    
     print('\nEnforcing Spatial Symmetry in x for denerate SOMOs\n')
     x_operator = cartesian_operators(coord,orbs)[1]
     SOMOs_in_x_basis = x_operator[np.ix_([SOMO1, SOMO2], [SOMO1, SOMO2])]
     _, x_rotation = np.linalg.eigh(SOMOs_in_x_basis)
     SOMOs_x_rot = np.dot(orbs[:, [SOMO1, SOMO2]], x_rotation)
     orbs[:, [SOMO1, SOMO2]] = SOMOs_x_rot
-    '''
+    
     
     return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
 
@@ -1320,7 +1320,8 @@ def dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates,hetero):
     natoms = coords.shape[0]
     print("Calculating dipole moments ...\n")
     dip1el = cartesian_operators(coords,hf_orbs)[0]
-    o0 = ndocc
+    SOMO1 = ndocc
+    SOMO2 = ndocc + 1
 
    # print("x norm= %f"%linalg.norm(dip1el[:,:,0] - dip1el[:,:,0].T))  # checking symmetric
    # print("y norm= %f"%linalg.norm(dip1el[:,:,1] - dip1el[:,:,1].T))
@@ -1329,122 +1330,272 @@ def dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates,hetero):
     dipoles = np.zeros((nstates,nstates,3)) 
     
     if hetero=='no':
-        #1 <0|mu|0>
-        for m in range(ndocc):
-                dipoles[0,0,:] -= 2*dip1el[m,m,:]
-        dipoles[0,0,:] -= dip1el[o0,o0,:]
-        #2 <0|mu|ibar->0bar> 
-        for i in range(ndocc):
-            dipoles[0,i+1,:] = -dip1el[i,o0,:]
-            dipoles[i+1,0,:] = dipoles[0,i+1,:] 
-        #3 <0|mu|0->j'>
-        for j in range (ndocc):
-                dipoles[0,j+ndocc+1,:] = -dip1el[o0,j+ndocc+1,:]
-                dipoles[j+ndocc+1,0,:] = dipoles[0,j+ndocc+1,:]
-        #4 <0|mu|4,i->j'>=0
-        #5 <0|mu|2S,i->j'>
-        for n in range (ndocc**2):
-            nn = n+ndocc**2+2*ndocc+1
-            i = int(np.floor(n/ndocc))
-            j = n-i*ndocc+ndocc +1
-            dipoles[0,nn,:] = -np.sqrt(2)*dip1el[i,j,:]
-            dipoles[nn,0,:] = dipoles[0,nn,:]
-        #6 <0|mu|2T,i->j'>=0
-        if mixing==True:
-            print("Dipole moments are corrected for ground state mixing of excited configurations in rotated basis.\n")
-            #7 <kbar->0bar|mu|ibar->0bar>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for i in range(ndocc):
-                    for k in range(ndocc):
-                        dipoles[i+1,k+1,:] = +dip1el[i,k,:] 
-                        if i==k:
-                            dipoles[i+1,k+1,:] += dipoles[0,0,:] - dip1el[o0,o0,:]
-            #8 <kbar->0bar|mu|0->j'> = 0
-            #9 <kbar->0bar|mu|4,i->j'>=0
-            #10 <kbar->0bar|mu|2S,i->j'>
-            for n in range(ndocc**2):
-                nn = n+ndocc**2+2*ndocc+1
-                i = int(np.floor(n/ndocc))
-                j = n-i*ndocc+ndocc +1
-                dipoles[i+1,nn,:] = -1/np.sqrt(2)*dip1el[o0,j,:]
-                dipoles[nn,i+1,:] = dipoles[i+1,nn,:]
-            #11 <kbar->0bar|mu|2T,i->j'>
-            for n in range(ndocc**2):
-                    nn = n+2*ndocc**2+2*ndocc+1
-                    i = int(np.floor(n/ndocc))
-                    j = n-i*ndocc+ndocc +1
-                    dipoles[i+1,nn,:] = -3/np.sqrt(6)*dip1el[o0,j,:]
-                    dipoles[nn,i+1,:] = dipoles[i+1,nn,:]
+        #1 <OS1|mu|OS1>
+        for o in range(ndocc):
+            dipoles[0,0,:] -= 2*dip1el[o,o,:]
+        dipoles[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
+        #2 <OS1|mu|ZW0> 
+        dipoles[0,1,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
+        dipoles[1,0,:] = dipoles[0,1,:] 
+        #3 <OS1|mu|ZW0'> 
+        dipoles[0,2,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
+        dipoles[2,0,:] = dipoles[0,1,:] 
+        #4 <OS1|mu|HS1> 
+        block_index = 3
+        for col in range(block_index, block_index + ndocc):
+            o_orb = col - block_index
+            dipoles[0,col,:] = dip1el[o_orb, SOMO1, :]
+            dipoles[col,0,:] = dipoles[0,col,:]
+        #5 <OS1|mu|HS2> 
+        block_index = ndocc + 3
+        for col in range(block_index, block_index + ndocc):
+            o_orb = col - block_index
+            dipoles[0,col,:] = - dip1el[o_orb, SOMO2, :]
+            dipoles[col,0,:] = dipoles[0,col,:]
+        #6 <OS1|mu|SL1> 
+        block_index = 2 * ndocc + 3
+        for col in range(block_index, block_index + ndocc):
+            v_orb = col - block_index + (SOMO2 + 1)
+            dipoles[0,col,:] = dip1el[v_orb, SOMO2, :]
+            dipoles[col,0,:] = dipoles[0,col,:]
+        #7 <OS1|mu|SL2> 
+        block_index = 3 * ndocc + 3
+        for col in range(block_index, block_index + ndocc):
+            v_orb = col - block_index + (SOMO2 + 1)
+            dipoles[0,col,:] = -dip1el[v_orb, SOMO1, :]
+            dipoles[col,0,:] = dipoles[0,col,:]
+        
+        #8 <ZW0|mu|ZW0>
+        for o in range(ndocc + 1):
+            dipoles[1,1,:] -= 2*dip1el[o,o,:]
+        #9 <ZW0|mu|ZW0'> = 0
+        #10 <ZW0|mu|HS1>
+        block_index = 3
+        for col in range(block_index, block_index + ndocc):
+            o_orb = col - block_index
+            dipoles[1,col,:] = (-2 ** 0.5) * dip1el[o_orb, SOMO2, :]
+            dipoles[col,1,:] = dipoles[1,col,:]
+        #11 <ZW0|mu|HS2> = 0
+        #12 <ZW0|mu|SL1> 
+        block_index = 2 * ndocc + 3
+        for col in range(block_index, block_index + ndocc):
+            v_orb = col - block_index + (SOMO2 + 1)
+            dipoles[1,col,:] = (2 ** 0.5) * dip1el[v_orb, SOMO1, :]
+            dipoles[col,1,:] = dipoles[1,col,:]
+        #13 <ZW0|mu|SL2> = 0 
+        
+        #14 <ZW0'|mu|ZW0'>
+        for o in range(ndocc):
+            dipoles[2,2,:] -= 2*dip1el[o,o,:]
+        dipoles[2,2,:] -= 2 * dip1el[SOMO2,SOMO2,:]
+        #15 <ZW0'|mu|HS1> = 0
+        #16 <ZW0'|mu|HS2>
+        block_index = ndocc + 3
+        for col in range(block_index, block_index + ndocc):
+            o_orb = col - block_index
+            dipoles[2,col,:] = (2 ** 0.5) * dip1el[o_orb, SOMO1, :]
+            dipoles[col,2,:] = dipoles[2,col,:]
+        #17 <ZW0'|mu|SL1> = 0
+        #18 <ZW0'|mu|SL2>
+        block_index = 3 * ndocc + 3
+        for col in range(block_index, block_index + ndocc):
+            v_orb = col - block_index + (SOMO2 + 1)
+            dipoles[2,col,:] = (- 2 ** 0.5) * dip1el[v_orb, SOMO2, :]
+            dipoles[col,2,:] = dipoles[2,col,:]
+        
+        row_block_index = 3
+        #19 <HS1|mu|HS1>
+        col_block_index = 3
+        for row in range(row_block_index, row_block_index + ndocc):
+            o_orb1 = row - row_block_index
+            for col in range(row, col_block_index + ndocc):
+                o_orb2 = col - col_block_index
+                if o_orb1 == o_orb2:
+                    for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
+                        dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                    dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                    dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                else:    
+                    dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
+                dipoles[col,row,:] = dipoles[row,col,:] 
+    
+        #20 <HS1|mu|HS2>
+        col_block_index = ndocc + 3
+        for row in range(row_block_index, row_block_index + ndocc):
+            o_orb1 = row - row_block_index
+            dipoles[row,row,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
+        #21 <HS1|mu|SL1> = 0
+        #22 <HS1|mu|SL2> = 0
+
+    
+        row_block_index = ndocc + 3
+        #23 <HS2|mu|HS2>
+        col_block_index = ndocc + 3
+        for row in range(row_block_index, row_block_index + ndocc):
+            o_orb1 = row - row_block_index
+            for col in range(row, col_block_index + ndocc):
+                o_orb2 = col - col_block_index
+                if o_orb1 == o_orb2:
+                    for o in range(ndocc):
+                        dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                    dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                    dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
+                    dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                else:    
+                    dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+        #24 <HS2|mu|SL1> = 0
+        #25 <HS2|mu|SL2> = 0
+    
+        row_block_index = 2 * ndocc + 3
+        #26 <SL1|mu|SL1>
+        col_block_index = 2 * ndocc + 3
+        for row in range(row_block_index, row_block_index + ndocc):
+            v_orb1 = row - row_block_index + (SOMO2 + 1)
+            for col in range(row, col_block_index + ndocc):
+                v_orb2 = col - col_block_index + (SOMO2 + 1)
+                if v_orb1 == v_orb2:
+                    for o in range(ndocc):
+                        dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                    dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                    dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                else:    
+                    dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+        #27 <SL1|mu|SL2>
+        col_block_index = 3 * ndocc + 3
+        for row in range(row_block_index, row_block_index + ndocc):
+            v_orb1 = row - row_block_index + (SOMO2 + 1)
+            dipoles[row,row,:] = dip1el[SOMO1,SOMO2,:]
+    
+        row_block_index = 3 * ndocc + 3
+        #28 <SL2|mu|SL2>
+        col_block_index = 3 * ndocc + 3
+        for row in range(row_block_index, row_block_index + ndocc):
+            v_orb1 = row - row_block_index + (SOMO2 + 1)
+            for col in range(row, col_block_index + ndocc):
+                v_orb2 = col - col_block_index + (SOMO2 + 1)
+                if v_orb1 == v_orb2:
+                    for o in range(ndocc):
+                        dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                    dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                    dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                else:    
+                    dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    
+    ################# TRIPLET BLOCK ######################
+    
+        row_index = 4 * ndocc + 3
+        #29 <OS3|mu|OS3>
+        for o in range(ndocc):
+            dipoles[row_index,row_index,:] -= 2*dip1el[o,o,:]
+        dipoles[row_index,row_index,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
+        #30 <OS3|mu|HS1>
+        col_index = 4 * ndocc + 4
+        for col in range(col_index, col_index + ndocc):
+            o_orb = col - col_index
+            dipoles[row_index,col,:] = -dip1el[o_orb,SOMO1,:]
+            dipoles[col,row_index,:] = dipoles[row_index,col,:]
+        #31 <OS3|mu|HS2>
+        col_index = 5 * ndocc + 4
+        for col in range(col_index, col_index + ndocc):
+            o_orb = col - col_index
+            dipoles[row_index,col,:] = -dip1el[o_orb,SOMO2,:]
+            dipoles[col,row_index,:] = dipoles[row_index,col,:]
+        #32 <OS3|mu|SL1>
+        col_index = 6 * ndocc + 4
+        for col in range(col_index, col_index + ndocc):
+            v_orb = col - col_index + (SOMO2 + 1)
+            dipoles[row_index,col,:] = dip1el[v_orb,SOMO2,:]
+            dipoles[col,row_index,:] = dipoles[row_index,col,:]
+        #33 <OS3|mu|SL2>
+        col_index = 7 * ndocc + 4
+        for col in range(col_index, col_index + ndocc):
+            v_orb = col - col_index + (SOMO2 + 1)
+            dipoles[row_index,col,:] = -dip1el[v_orb,SOMO1,:]
+            dipoles[col,row_index,:] = dipoles[row_index,col,:]
             
-            #12 <0->j'|mu|0->l'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for j in range(ndocc):
-                    for l in range(ndocc):
-                        dipoles[j+ndocc+1,l+ndocc+1,:] = -dip1el[j+ndocc+1,l+ndocc+1,:]
-                        if j==l:
-                           dipoles[j+ndocc+1,l+ndocc+1,:] += dipoles[0,0,:] + dip1el[o0,o0,:]
-            #13 <0->j'|mu|4,k->l'> = 0
-            #14 <0->j'|mu|2S,k->l'>
-            for n in range(ndocc**2):
-                    nn = n+ndocc**2+2*ndocc+1
-                    i = int(np.floor(n/ndocc))
-                    j = n-i*ndocc+ndocc +1
-                    dipoles[j,nn,:] = 1/np.sqrt(2)*dip1el[i,o0,:]
-                    dipoles[nn,j,:] = dipoles[j,nn,:]
-            #15 <0->j'|mu|2T,k->l'>
-            for n in range(ndocc**2):
-                    nn = n+2*ndocc**2+2*ndocc+1
-                    i = int(np.floor(n/ndocc))
-                    j = n-i*ndocc+ndocc +1
-                    dipoles[j,nn,:] = -3/np.sqrt(6)*dip1el[i,o0,:]
-                    dipoles[nn,j,:] = dipoles[j,nn,:]
-            #16 <4,i->j'|mu|4,k->l'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for m in range(ndocc**2):
-                     mm = m+2*ndocc+1
-                     k = int(np.floor(m/ndocc))
-                     l = m-k*ndocc+ndocc +1
-                     for n in range (ndocc**2):
-                         nn = n+2*ndocc+1
-                         i = int(np.floor(n/ndocc))
-                         j = n-i*ndocc+ndocc +1
-                         if i==k:
-                             dipoles[mm,nn,:] = -dip1el[j,l,:]
-                         if j==l:
-                             dipoles[mm,nn,:] += dip1el[i,k,:]
-                         if i==k and j==l:
-                             dipoles[mm,nn,:] += dipoles[0,0,:]   
-            #17 <4,k->l'|mu|2S,i->j'> = 0
-            #18 <4,k->l'|mu|2T,i->j'> = 0
-            #19 <2S,i->j'|mu|2S,k->l'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for m in range(ndocc**2):
-                mm = m+ndocc**2+2*ndocc+1
-                k = int(np.floor(m/ndocc))
-                l = m-k*ndocc+ndocc +1
-                for n in range (ndocc**2):
-                    nn = n+ndocc**2+2*ndocc+1
-                    i = int(np.floor(n/ndocc))
-                    j = n-i*ndocc+ndocc +1
-                    if i==k:
-                        dipoles[mm,nn,:] = -dip1el[j,l,:]
-                    if j==l:
-                        dipoles[mm,nn,:] += dip1el[i,k,:]
-                    if i==k and j==l:
-                        dipoles[mm,nn,:] += dipoles[0,0,:]
-            #20 <2S,i->j'|mu|2T,k->l'> = 0 
+        row_block_index = 4 * ndocc + 4
+        #34 <HS1|H|HS1>
+        col_block_index = 4 * ndocc + 4
+        for row in range(row_block_index, row_block_index + ndocc):
+            o_orb1 = row - row_block_index
+            for col in range(row, col_block_index + ndocc):
+                o_orb2 = col - col_block_index
+                if o_orb1 == o_orb2:
+                    for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
+                        dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                    dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                    dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                else:    
+                    dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
+                dipoles[col,row,:] = dipoles[row,col,:] 
+        
+            #35 <HS1|mu|HS2>
+            col_block_index = 5 * ndocc + 4
+            for row in range(row_block_index, row_block_index + ndocc):
+                o_orb1 = row - row_block_index
+                dipoles[row,row,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
+            #36 <HS1|mu|SL1> = 0
+            #37 <HS1|mu|SL2> = 0
+
+            row_block_index = 5 * ndocc + 4
+            #38 <HS2|mu|HS2>
+            col_block_index = 5 * ndocc + 4
+            for row in range(row_block_index, row_block_index + ndocc):
+                o_orb1 = row - row_block_index
+                for col in range(row, col_block_index + ndocc):
+                    o_orb2 = col - col_block_index
+                    if o_orb1 == o_orb2:
+                        for o in range(ndocc):
+                            dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                        dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                        dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
+                        dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                    else:    
+                        dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
+                    dipoles[col,row,:] = dipoles[row,col,:]
+            #39 <HS2|mu|SL1> = 0
+            #40 <HS2|mu|SL2> = 0
+        
+            row_block_index = 6 * ndocc + 4
+            #41 <SL1|mu|SL1>
+            col_block_index = 6 * ndocc + 3
+            for row in range(row_block_index, row_block_index + ndocc):
+                v_orb1 = row - row_block_index + (SOMO2 + 1)
+                for col in range(row, col_block_index + ndocc):
+                    v_orb2 = col - col_block_index + (SOMO2 + 1)
+                    if v_orb1 == v_orb2:
+                        for o in range(ndocc):
+                            dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                        dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                        dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                    else:    
+                        dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+                    dipoles[col,row,:] = dipoles[row,col,:]
+            #42 <SL1|mu|SL2>
+            col_block_index = 7 * ndocc + 3
+            for row in range(row_block_index, row_block_index + ndocc):
+                v_orb1 = row - row_block_index + (SOMO2 + 1)
+                dipoles[row,row,:] = -dip1el[SOMO1,SOMO2,:]
+        
+            row_block_index = 7 * ndocc + 4
+            #28 <SL2|H|SL2>
+            col_block_index = 7 * ndocc + 4
+            for row in range(row_block_index, row_block_index + ndocc):
+                v_orb1 = row - row_block_index + (SOMO2 + 1)
+                for col in range(row, col_block_index + ndocc):
+                    v_orb2 = col - col_block_index + (SOMO2 + 1)
+                    if v_orb1 == v_orb2:
+                        for o in range(ndocc):
+                            dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                        dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                        dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                    else:    
+                        dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+                    dipoles[col,row,:] = dipoles[row,col,:]
             
-            #21 <2T,i->j'|mu|2T,k->l'>  CAN OPTIMISE TO RUN OVER UPPER TRIANGLE ONLY AND EQUATE LOWER TRAINGLE ELEMENTS TO THE TRANSPOSE OF UPPER TRAINGLE
-            for m in range(ndocc**2):
-                     mm = m+2*ndocc**2+2*ndocc+1
-                     k = int(np.floor(m/ndocc))
-                     l = m-k*ndocc+ndocc +1
-                     for n in range (ndocc**2):
-                         nn = n+2*ndocc**2+2*ndocc+1
-                         i = int(np.floor(n/ndocc))
-                         j = n-i*ndocc+ndocc +1
-                         if i==k:
-                             dipoles[mm,nn,:] = -dip1el[j,l,:]
-                         if j==l:
-                             dipoles[mm,nn,:] += dip1el[i,k,:]
-                         if i==k and j==l:
-                             dipoles[mm,nn,:] += dipoles[0,0,:]                 
             #print("%10.5f"%linalg.norm(dipoles[:,:,0] - dipoles[:,:,0].T))  # checking symmetric
             #print("%10.5f"%linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
             #print("%10.5f"%linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))   
@@ -1568,17 +1719,25 @@ def dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates,hetero):
                              dipoles[mm,nn,:] += dip1el[i,k,:]
                          if i==k and j==l:
                              dipoles[mm,nn,:] += dipoles[0,0,:]
-    perm_dip=dipoles[0,0,:]
-    for i in range(natoms):
-        atom_z=0
-        if atoms[i][0] in ['C','c','n1','N1']:
-            atom_z=1
-        elif atoms[i][0] in ['Cl','cl','CL','N2','n2']:
-            atom_z=2   
-        # for x in range(3):
-        #     perm_dip[x]+=atom_z*coords[i,x]*tobohr
-        perm_dip[:]+=atom_z*coords[i,:]*tobohr
-    print("Permanent dipole moment of ground state: mu0 = %7.3f x %7.3f y %7.3f z\n"%(perm_dip[0],perm_dip[1],perm_dip[2]))
+    OS1_perm_dip=dipoles[0,0,:]
+    ZW0_perm_dip=dipoles[1,1,:]
+    ZW0p_perm_dip=dipoles[2,2,:]
+    OS3_perm_dip=dipoles[4 * ndocc + 3,4 * ndocc + 3,:]
+    for dipole in [OS1_perm_dip, ZW0_perm_dip, ZW0p_perm_dip, OS3_perm_dip]:
+        for i in range(natoms):
+            atom_z=0
+            if atoms[i][0] in ['C','c','n1','N1']:
+                atom_z=1
+            elif atoms[i][0] in ['Cl','cl','CL','N2','n2']:
+                atom_z=2   
+            # for x in range(3):
+            #     perm_dip[x]+=atom_z*coords[i,x]*tobohr
+            dipole[:]+=atom_z*coords[i,:]*tobohr
+    print(f"Permanent dipole moment of ground states:\n \
+            Open-Shell Singlet (|OS1>) = {OS1_perm_dip[0]:.3f} x {OS1_perm_dip[1]:.3f} y {OS1_perm_dip[2]:.3f} z\n \
+            Zwitterion 0 (|ZW0>) = {ZW0_perm_dip[0]:.3f} x {ZW0_perm_dip[1]:.3f} y {ZW0_perm_dip[2]:.3f} z\n \
+            Zwitterion 0' (|ZW0'>) = {ZW0p_perm_dip[0]:.3f} x {ZW0p_perm_dip[1]:.3f} y {ZW0p_perm_dip[2]:.3f} z\n \
+            Open-Shell Triplet (|OS3>) = {OS3_perm_dip[0]:.3f} x {OS3_perm_dip[1]:.3f} y {OS3_perm_dip[2]:.3f} z\n")
     return dipoles
    
 
@@ -1652,12 +1811,12 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
             print("Diagonalizing Hamiltonian using the dense matrix method ...\n")
             out.write("Diagonalizing Hamiltonian using the dense matrix method ...\n")
             cis_energies, cis_coeffs = linalg.eigh(ham_rot)
-            #### IGNORE DIPOLE CALCULATION FOR NOW ####
-        # dip_array = dipole(coords,atoms,norbs,hf_orbs,ndocc,nstates,'rot','cisd','no')
-        # aku=np.einsum("ijx,jk",dip_array,cis_coeffs)
-        # mu0u=np.einsum("j,jix",cis_coeffs[:,0].T,aku)
-        # osc_array=np.zeros_like(cis_energies)
-        # s2_array=np.zeros_like(cis_energies)
+        if cis_type == 'CIS':
+            dip_array = dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates,'no')
+        dip_couplings = np.einsum("ijx,jk",dip_array,cis_coeffs)
+        state0_tdms = np.einsum("j,jix",cis_coeffs[:,0].T, dip_couplings)
+        osc_array=np.zeros_like(cis_energies)
+        s2_array=np.zeros_like(cis_energies)
         print("Ground state energy relative to E(|0>): %04.3f eV"%(cis_energies[0]-energy0))
         out.write("Ground state energy relative to E(|0>): %04.3f eV\n"%(cis_energies[0]-energy0))
         strng = ""
@@ -1740,19 +1899,19 @@ def cisd_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, fi
                 out.write("--------------------------------------------------------------------\n")
                 continue
 
-            #osc = 2.0/3.0*((cis_energies[i]-cis_energies[0])/toev)*(mu0u[i,0]**2+mu0u[i,1]**2+mu0u[i,2]**2) 
-            #osc_array[i]=osc
-            #s2_array[i]=spin
-            #print("")
-            #print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (mu0u[i,0], mu0u[i,1], mu0u[i,2], osc, spin))
-            #print("--------------------------------------------------------------------\n")
-            #out.write("")
-            #out.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f\n" % (mu0u[i,0], mu0u[i,1], mu0u[i,2], osc, spin))
-            #out.write("--------------------------------------------------------------------\n")
-            #strng = strng + broaden(20.0,osc,cis_energies[i]-cis_energies[0]) 
-            #strng = strng + broaden(FWHM,osc,cis_energies[i]-cis_energies[0])
-        #strng = strng[1:]    
-    return strng, cis_energies - cis_energies[0] #,osc_array,s2_array
+            osc = 2.0/3.0 * ((cis_energies[i] - cis_energies[0]) / toev) * (state0_tdms[i,0]**2 + state0_tdms[i,1]**2 + state0_tdms[i,2]**2)  # Calculating Oscillator Strength
+            osc_array[i]=osc
+            s2_array[i]=spin
+            print("TDMs with State 0")
+            print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (state0_tdms[i,0], state0_tdms[i,1], state0_tdms[i,2], osc, spin))
+            print("--------------------------------------------------------------------\n")
+            out.write("TDMs with State 0")
+            out.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (state0_tdms[i,0], state0_tdms[i,1], state0_tdms[i,2], osc, spin))
+            out.write("--------------------------------------------------------------------\n")
+            strng = strng + broaden(20.0,osc,cis_energies[i]-cis_energies[0]) 
+            strng = strng + broaden(FWHM,osc,cis_energies[i]-cis_energies[0])
+        strng = strng[1:]    
+    return strng, cis_energies - cis_energies[0], osc_array, s2_array
 
 def hetero_cisd_ham(ndocc,norbs,energy0,orb_energies,rep_tens):
     o0 = ndocc# no. of doubly-occupied orbitals
@@ -2594,12 +2753,11 @@ def rad_calc(file,params):
                 print("\nDensity Matrix:")
                 print(dens_mo)
                 sys.exit()
-    if sum(n_list)==0 and natoms_cl==0: 
-        #strng,ci_energies_array,osc_array,s2_array= cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
-        strng,ci_energies_array = cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
+    if sum(n_list)==0 and natoms_cl==0:
+        strng, ci_energies_array, osc_array, s2_array = cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
     else:
         strng,ci_energies_array,osc_array,s2_array = hetero_cisd_rot(ndocc,natoms,coord,atoms_array,energy0,two_body,orb_energy,hf_orbs,file)
-    return strng,ci_energies_array #,osc_array,s2_array  #return gnuplot data for plotting spectrum
+    return strng, ci_energies_array, osc_array, s2_array  #return gnuplot data for plotting spectrum
 
 
 

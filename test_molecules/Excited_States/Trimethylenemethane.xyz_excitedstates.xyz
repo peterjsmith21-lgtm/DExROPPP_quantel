@@ -6,57 +6,71 @@ Ground state energy relative to E(|0>): -3.461 eV
 State 0 0.000 eV 
 Excitation    CI Coef
 |3^OS>    0.97771 
-|3^SL1_1'>    0.20739 
+|3^SL1_1'>   -0.20739 
+<S**2>: 2.000
+--------------------------------------------------------------------
 State 1 0.774 eV 
 Excitation    CI Coef
 |1^OS>    0.89567 
 |1^HS2_1>    0.28366 
-|1^SL1_1'>   -0.34251 
-State 2 1.785 eV 
+|1^SL1_1'>    0.34251 
+TDMs with State 0TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000--------------------------------------------------------------------
+State 2 1.149 eV 
 Excitation    CI Coef
-|1^ZW0>   -0.61191 
-|1^ZW0'>    0.68770 
-|1^SL2_1'>    0.38323 
-State 3 3.613 eV 
-Excitation    CI Coef
-|1^ZW0>    0.71739 
-|1^ZW0'>    0.55894 
-|1^HS1_1>   -0.41137 
-State 4 4.150 eV 
+|1^ZW0>    0.62375 
+|1^ZW0'>   -0.62375 
+|1^HS1_1>   -0.29864 
+|1^SL2_1'>   -0.36427 
+TDMs with State 0TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000--------------------------------------------------------------------
+State 3 4.150 eV 
 Excitation    CI Coef
 |3^HS1_1>   -0.45234 
 |3^SL2_1'>    0.89185 
-State 5 4.321 eV 
+TDMs with State 0TDMX:0.000   TDMY:-0.577   TDMZ:0.000   Oscillator Strength:0.03389   <S**2>: 2.000--------------------------------------------------------------------
+State 4 4.321 eV 
 Excitation    CI Coef
 |3^OS>   -0.19757 
 |3^HS2_1>   -0.47775 
-|3^SL1_1'>    0.85599 
+|3^SL1_1'>   -0.85599 
+TDMs with State 0TDMX:0.430   TDMY:-0.239   TDMZ:0.000   Oscillator Strength:0.02555   <S**2>: 2.000--------------------------------------------------------------------
+State 5 4.480 eV 
+Excitation    CI Coef
+|1^ZW0>   -0.70711 
+|1^ZW0'>   -0.70711 
+TDMs with State 0TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000--------------------------------------------------------------------
 State 6 6.506 eV 
 Excitation    CI Coef
 |3^HS1_1>    0.89185 
 |3^SL2_1'>    0.45234 
+TDMs with State 0TDMX:0.000   TDMY:-1.766   TDMZ:0.000   Oscillator Strength:0.49708   <S**2>: 2.000--------------------------------------------------------------------
 State 7 6.537 eV 
 Excitation    CI Coef
 |3^HS2_1>   -0.87789 
-|3^SL1_1'>   -0.47356 
-State 8 6.978 eV 
-Excitation    CI Coef
-|1^ZW0'>    0.43338 
-|1^HS1_1>    0.33128 
-|1^SL2_1'>   -0.83460 
-State 9 7.201 eV 
+|3^SL1_1'>    0.47356 
+TDMs with State 0TDMX:-1.797   TDMY:0.132   TDMZ:0.000   Oscillator Strength:0.52017   <S**2>: 2.000--------------------------------------------------------------------
+State 8 7.201 eV 
 Excitation    CI Coef
 |1^OS>   -0.39483 
 |1^HS2_1>    0.15275 
-|1^SL1_1'>   -0.90597 
+|1^SL1_1'>    0.90597 
+TDMs with State 0TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000--------------------------------------------------------------------
+State 9 7.279 eV 
+Excitation    CI Coef
+|1^ZW0>    0.29161 
+|1^ZW0'>   -0.29161 
+|1^HS1_1>    0.11592 
+|1^SL2_1'>    0.90360 
+TDMs with State 0TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000--------------------------------------------------------------------
 State 10 8.586 eV 
 Excitation    CI Coef
 |1^OS>   -0.20467 
 |1^HS2_1>    0.94668 
-|1^SL1_1'>    0.24881 
-State 11 9.140 eV 
+|1^SL1_1'>   -0.24881 
+TDMs with State 0TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000--------------------------------------------------------------------
+State 11 8.608 eV 
 Excitation    CI Coef
-|1^ZW0>   -0.32407 
-|1^ZW0'>   -0.16386 
-|1^HS1_1>   -0.84573 
-|1^SL2_1'>   -0.39098 
+|1^ZW0>    0.16095 
+|1^ZW0'>   -0.16095 
+|1^HS1_1>    0.94730 
+|1^SL2_1'>   -0.22541 
+TDMs with State 0TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000--------------------------------------------------------------------

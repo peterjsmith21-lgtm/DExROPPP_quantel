@@ -12,8 +12,8 @@ params = [[-22.71707507,   1.70561621 ,  8.42083845  , 1.17315691 ,  0.        ]
 
 if __name__ == '__main__':
     from Diradical_ExROPPP import rad_calc
-    #from ExROPPP import write_gnu as gnu_Exroppp
+    from ExROPPP import write_gnu as gnu_Exroppp
 
     # For doing individual ExROPPP calculations on one monoradical
-    strng,ci_energies_array  = rad_calc(file=optimized_geometry, params = params)
-    #gnu_Exroppp(strng, optimized_geometry)
+    strng,ci_energies_array, osc_array, s2_array  = rad_calc(file=optimized_geometry, params = params)
+    gnu_Exroppp(strng, optimized_geometry)
