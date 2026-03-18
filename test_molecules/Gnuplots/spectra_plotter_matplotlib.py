@@ -13,16 +13,25 @@ broad = np.zeros_like(wavelength)
 with open(args.inputfile, 'r') as file:
     lines = file.readlines(   )
 
-    end_index = lines[-1].find(' lw 3 dt 1')
-    newline = lines[-1][2:end_index]
-    print(newline)
-    str = newline
+    # Find the start and end of the plotting command
+    last_line = lines[-1]
+    start_index = last_line.find('p ') + 2
+    end_index = last_line.find(' lw 3 dt 1')
+    
+    # Extract and sanitize the string
+    plot_cmd = last_line[start_index:end_index]
+    
+    # 1. Replace gnuplot's "0inf" with "0"
+    plot_cmd = plot_cmd.replace('0inf', '0')
+    print(f"Cleaned expression: {plot_cmd[:100]}...")
+
 for i, x in enumerate(wavelength):
-    broad[i] = eval(str)
-broad / np.max(broad)
+    broad[i] = eval(plot_cmd)
+if np.max(broad) > 0:
+    broad = broad / np.max(broad)
 plt.style.use('seaborn-v0_8-paper')
 plt.plot(wavelength, broad, color = 'teal')
 plt.title(f'{args.molecule_name}')  
 plt.xlabel('Wavelength/nm')
 plt.ylabel('Normalised Absorbance')
-plt.savefig(f'{args.molecule_name} Spectrum')
+plt.savefig(f'{args.molecule_name} Spectrum CISD')

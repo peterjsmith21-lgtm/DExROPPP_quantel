@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Debug Main with Geometry",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/MSci_Code/Diradical-EXROPPP/main.py",
+            "console": "integratedTerminal",
+            "args": ["~/MSci_Code/Diradical-EXROPPP/test_molecules/Cyclobutadiene.xyz"],
+            "justMyCode": true
+        }
+    ]
+}
