@@ -3509,14 +3509,14 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, state0_tdms, rng, cut
                     # S^2 = 0
             # Singlet HOMO to LUMO 1 (|1^HL1>)
                 elif j > (4 * ndocc + 2) and j <= (ndocc ** 2 + 4 * ndocc + 2):
-                    o_orb = ndocc - ((j - (4 * ndocc + 2)) // ndocc)
-                    v_orb = ((j - (4 * ndocc + 2)) % ndocc) + 1
+                    o_orb = ndocc - ((j - (4 * ndocc + 3)) // ndocc)
+                    v_orb = ((j - (4 * ndocc + 3)) % ndocc) + 1
                     str = f"|1^HL1_{o_orb}{v_orb}'>" 
                     # S^2 = 0
             # Singlet HOMO to LUMO 2 (|1^HL2>)
                 elif j > (ndocc ** 2 + 4 * ndocc + 2) and j <= (2 * ndocc ** 2 + 4 * ndocc + 2):
-                    o_orb = ndocc - ((j - (ndocc ** 2 + 4 * ndocc + 2)) // ndocc)
-                    v_orb = ((j - (ndocc ** 2 + 4 * ndocc + 2)) % ndocc) + 1
+                    o_orb = ndocc - ((j - (ndocc ** 2 + 4 * ndocc + 3)) // ndocc)
+                    v_orb = ((j - (ndocc ** 2 + 4 * ndocc + 3)) % ndocc) + 1
                     str = f"|1^HL2_{o_orb}{v_orb}'>" 
                     # S^2 = 0
             ########### TRIPLET CSFs ###########
@@ -3546,26 +3546,26 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, state0_tdms, rng, cut
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Triplet HOMO to LUMO 1 (|1^HL1>)
                 elif j > (2 * ndocc ** 2 + 8 * ndocc + 3) and j <= (3 * ndocc ** 2 + 8 * ndocc + 3):
-                    o_orb = ndocc - ((j - (2 * ndocc ** 2 + 8 * ndocc + 3)) // ndocc)
-                    v_orb = ((j - (2 * ndocc ** 2 + 8 * ndocc + 3)) % ndocc) + 1
+                    o_orb = ndocc - ((j - (2 * ndocc ** 2 + 8 * ndocc + 4)) // ndocc)
+                    v_orb = ((j - (2 * ndocc ** 2 + 8 * ndocc + 4)) % ndocc) + 1
                     str = f"|3^HL1_{o_orb}{v_orb}'>" 
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Triplet HOMO to LUMO 2 (|3^HL2>)
                 elif j > (3 * ndocc ** 2 + 8 * ndocc + 3) and j <= (4 * ndocc ** 2 + 8 * ndocc + 3):
-                    o_orb = ndocc - ((j - (3 * ndocc ** 2 + 8 * ndocc + 3)) // ndocc)
-                    v_orb = ((j - (3 * ndocc ** 2 + 8 * ndocc + 3)) % ndocc) + 1
+                    o_orb = ndocc - ((j - (3 * ndocc ** 2 + 8 * ndocc + 4)) // ndocc)
+                    v_orb = ((j - (3 * ndocc ** 2 + 8 * ndocc + 4)) % ndocc) + 1
                     str = f"|3^HL2_{o_orb}{v_orb}'>" 
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Triplet HOMO to LUMO 3 (|3^HL2>)
                 elif j > (4 * ndocc ** 2 + 8 * ndocc + 3) and j <= (5 * ndocc ** 2 + 8 * ndocc + 3):
-                    o_orb = ndocc - ((j - (4 * ndocc ** 2 + 8 * ndocc + 3)) // ndocc)
-                    v_orb = ((j - (4 * ndocc ** 2 + 8 * ndocc + 3)) % ndocc) + 1
+                    o_orb = ndocc - ((j - (4 * ndocc ** 2 + 8 * ndocc + 4)) // ndocc)
+                    v_orb = ((j - (4 * ndocc ** 2 + 8 * ndocc + 4)) % ndocc) + 1
                     str = f"|3^HL3_{o_orb}{v_orb}'>" 
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Quintet HOMO to LUMO (|5^HL>)
                 elif j > (5 * ndocc ** 2 + 8 * ndocc + 3):
-                    o_orb = ndocc - ((j - (5 * ndocc ** 2 + 8 * ndocc + 3)) // ndocc)
-                    v_orb = ((j - (5 * ndocc ** 2 + 8 * ndocc + 3)) % ndocc) + 1
+                    o_orb = ndocc - ((j - (5 * ndocc ** 2 + 8 * ndocc + 4)) // ndocc)
+                    v_orb = ((j - (5 * ndocc ** 2 + 8 * ndocc + 4)) % ndocc) + 1
                     str = f"|5^HL_{o_orb}{v_orb}'>" 
                     spin += 6 * ci_coeffs[j,i]**2 # (S=2)
                 if np.absolute(ci_coeffs[j,i]) > csf_tol:
