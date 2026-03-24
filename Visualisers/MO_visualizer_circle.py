@@ -305,10 +305,12 @@ class MODrawer(MolecularOrbitals):
         ax = fig.add_subplot(projection='3d')
         if key == 'SOMO' or str(key) == 'SOMO':
             key = f'MO{self.somo_index}'
+        elif key == 'SOMO2' or str(key) == 'SOMO2':
+            key = f'MO{self.somo_index+1}'
         elif key == 'HOMO' or str(key) == 'HOMO':
             key = f'MO{self.somo_index-1}'
         elif key == 'LUMO' or str(key) == 'LUMO':
-            key = f'MO{self.somo_index+1}'        
+            key = f'MO{self.somo_index+2}'        
         basis = self.mos.get(key)
         atom_centres = np.array(basis[:, :-1])
         atom_coefs = np.array(basis[:, -1])
@@ -382,7 +384,7 @@ class MODrawer(MolecularOrbitals):
 
 
         if savefig:
-            plt.savefig(f'{savefig}.pdf', dpi=1000, bbox_inches='tight')
+            plt.savefig(f'{self.name}_{key}_circ.pdf', dpi=1000, bbox_inches='tight')
         else:
             plt.show()
 
@@ -440,14 +442,14 @@ if __name__ == "__main__":
     savefig = MO_input.savefig
 
     # Build the path to Converged_orbitals/<Molecule>.out based on the script directory
-    out_file = os.path.join(script_dir, '..', 'Converged_orbitals', f'{Molecule}.out')
+    out_file = os.path.join(script_dir, '..', 'test_molecules', 'Converged_orbitals', f'{Molecule}.out')
 
     if not os.path.exists(out_file):
         raise FileNotFoundError(f'Could not find output file: {out_file}')
 
     # Now create your MolecularOrbitals instance
     # (Assuming MODrawer is defined in the same script or imported)
-    MolClass = MODrawer(out_file, "ttm")
+    MolClass = MODrawer(out_file, Molecule)
 
     print(f"The SOMO is MO{MolClass.somo_index}")
 
