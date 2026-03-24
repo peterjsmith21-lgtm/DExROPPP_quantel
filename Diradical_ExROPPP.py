@@ -642,7 +642,7 @@ def density(orbs, ndocc):
                    once from the singly occupied molecular orbitals (SOMOs).
     '''
     prefactor_matrix = np.diag((np.full(ndocc + 2, 2)))
-    prefactor_matrix[[ndocc, ndocc + 1], [ndocc, ndocc + 1]] = 1 # SOMOs are not multiplied by 1 rather than 2.
+    prefactor_matrix[[ndocc, ndocc + 1], [ndocc, ndocc + 1]] = 1 # SOMOs are multiplied by 1 rather than 2.
     density = orbs[:,:ndocc + 2] @ (prefactor_matrix @ orbs[:,:ndocc + 2].T) # P = C_occ *  Prefactor * C_occ^T  
     return density
 
@@ -744,6 +744,49 @@ def cartesian_operators(coords,hf_orbs):
     
     return full_cartesian_operator, x_operator, y_operator, z_operator
 
+class DIIS:
+    def __init__(self, max_iter=100):
+        self.max_iter = max_iter
+        self.fock_list = []
+        self.error_list = []
+    
+    def get_extrapolated_fock(self, F, D):
+        error = F @ D - D @ F
+        
+        self.fock_list.append(F)
+        self.error_list.append(error)
+        
+        if len(self.fock_list) > self.max_iter:
+                self.fock_list.pop(0)
+                self.error_list.pop(0)
+        n = len(self.fock_list)
+        if n < 2:
+            return F
+
+        B = np.zeros((n + 1, n + 1))
+        for i in range(n):
+            for j in range(i, n):
+                val = np.sum(self.error_list[i] * self.error_list[j])
+                B[i, j] = B[j, i] = val
+        
+        # Constraint: sum(c_i) = 1
+        B[n, :n] = -1
+        B[:n, n] = -1
+        B[n, n] = 0
+
+        rhs = np.zeros(n + 1)
+        rhs[n] = -1
+
+        try:
+            coeffs = np.linalg.solve(B, rhs)
+        except np.linalg.LinAlgError:
+            return F
+
+        F_ext = np.zeros_like(F)
+        for i in range(n):
+            F_ext += coeffs[i] * self.fock_list[i]
+
+        return F_ext
 
 #Main HF function
 def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
@@ -783,6 +826,8 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
     guess_dens = density(evecs,ndocc)
     #iterate until convergence 
     energy1=0
+    diis = DIIS()
+    use_diis = False
     print("\n-------------------------------------")
     print("Restricted Open-shell PPP Calculation")
     print("-------------------------------------\n")
@@ -794,6 +839,11 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
             print(f"\nEnergy not converged after {maxcycles} cycles")
             break
         fock_mat = fock(repulsion, hopping, guess_dens, natoms_c, natoms_n, natoms, n_list)
+        if iter == 1000 and conv_crit > 0.01:
+            print('--DM Struggling to converge after 40 iterations, implementing DIIS solver--')
+            use_diis = True
+        if use_diis:
+            fock_mat = diis.get_extrapolated_fock(fock_mat, guess_dens)
         evals, orbs = np.linalg.eigh(fock_mat)
         dens = density(orbs,ndocc)
         energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
@@ -804,7 +854,12 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
         if energy2 > energy1:
             print('\nEnergy rises!')
         energy1 = energy2
-        guess_dens = dens
+        if not use_diis:
+            #guess_dens = (0.05 * dens) + (0.95 * guess_dens)
+            guess_dens = dens
+        else:
+            guess_dens = dens
+
     
     SOMO1 = ndocc
     SOMO2 = ndocc + 1
@@ -825,7 +880,7 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
     _, y_rotation = np.linalg.eigh(SOMOs_in_y_basis)
     SOMOs_y_rot = np.dot(orbs[:, [SOMO1, SOMO2]], y_rotation)
     orbs[:, [SOMO1, SOMO2]] = SOMOs_y_rot
-    
+
     print('\nEnforcing Spatial Symmetry in z for denerate SOMOs\n')
     z_operator = cartesian_operators(coord,orbs)[3]
     SOMOs_in_z_basis = z_operator[np.ix_([SOMO1, SOMO2], [SOMO1, SOMO2])]
@@ -5019,6 +5074,7 @@ def rad_calc(file,params):
             if i!=j and fock_mo[i,j] > 1e-4:
                 print("Fock matrix not converged!")
                 print("\nFock Matrix:")
+                print(f'Large off-diagonal matrix element found at F_{i},{j}: {fock_mo[i,j]}')
                 print(fock_mo)
                 sys.exit()
     # check the density matrix
