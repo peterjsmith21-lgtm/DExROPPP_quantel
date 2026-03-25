@@ -787,6 +787,41 @@ class DIIS:
             F_ext += coeffs[i] * self.fock_list[i]
 
         return F_ext
+    
+    
+def get_level_shifted_fock(Fock_mat, Dens, shift_ext):
+    """
+    F: Standard Fock matrix
+    D: Current Density matrix (2 for Docc, 1 for SOMOs)
+    shift_ext: The shift value 'b' (e.g., 0.2 Hartrees)
+    """
+    n = Fock_mat.shape[0]
+    identity = np.eye(n)
+    
+    # Projector for the Virtual space
+    # (I - 0.5*D) is 0 for weight 2, 0.5 for weight 1, 1.0 for weight 0
+    v_projector = identity - 0.5 * Dens
+    
+    # Apply the shift
+    F_shifted = Fock_mat + shift_ext * v_projector
+    
+    return F_shifted
+
+
+def delocalise_somos(orbs, i, j):
+    """
+    i, j: indices of the two localized SOMOs
+    """
+    # Create copies to avoid overwriting mid-calculation
+    L = orbs[:, i].copy()
+    R = orbs[:, j].copy()
+    
+    # Apply the 45-degree unitary rotation
+    orbs[:, i] = (L + R) / np.sqrt(2)
+    orbs[:, j] = (L - R) / np.sqrt(2)
+    
+    return orbs
+
 
 #Main HF function
 def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
@@ -822,12 +857,14 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
     hopping = t_term(dist_array,natoms_c,natoms_n,natoms,n_list,angles,params)
     repulsion = v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params)
     #Diagonalize Huckel Hamiltonian to form initial density guess
-    guess_evals,evecs = np.linalg.eigh(hopping)
-    guess_dens = density(evecs,ndocc)
+    guess_evals, guess_orbs = np.linalg.eigh(hopping)
+    guess_dens = density(guess_orbs,ndocc)
     #iterate until convergence 
     energy1=0
-    diis = DIIS()
+    level_shift = True
+    diis = DIIS(max_iter=100)
     use_diis = False
+    shift = 5
     print("\n-------------------------------------")
     print("Restricted Open-shell PPP Calculation")
     print("-------------------------------------\n")
@@ -839,9 +876,12 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
             print(f"\nEnergy not converged after {maxcycles} cycles")
             break
         fock_mat = fock(repulsion, hopping, guess_dens, natoms_c, natoms_n, natoms, n_list)
-        if iter == 1000 and conv_crit > 0.01:
-            print('--DM Struggling to converge after 40 iterations, implementing DIIS solver--')
+        if iter == 500:
+            print('---Implementing DIIS to speed up convergence---')
             use_diis = True
+            level_shift = False
+        if level_shift:
+            fock_mat = get_level_shifted_fock(fock_mat, guess_dens, shift_ext = shift)
         if use_diis:
             fock_mat = diis.get_extrapolated_fock(fock_mat, guess_dens)
         evals, orbs = np.linalg.eigh(fock_mat)
@@ -851,29 +891,32 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
         print(iter, energy2, conv_crit, energy2 - energy1)
         if conv_crit < d_tol:
             break
-        if energy2 > energy1:
-            print('\nEnergy rises!')
         energy1 = energy2
-        if not use_diis:
-            #guess_dens = (0.05 * dens) + (0.95 * guess_dens)
-            guess_dens = dens
-        else:
-            guess_dens = dens
-
+        guess_dens = dens
+        '''
+        if iter == maxcycles - 5:
+            print("\n--------------------------")
+            print("Converged ROPPP Orbitals")
+            print("--------------------------\n")
+            natoms=np.shape(coord)[0]
+            for iorb in range(natoms):
+                print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
+                print(np.around(orbs[:, iorb], decimals=2))
+        '''
     
     SOMO1 = ndocc
     SOMO2 = ndocc + 1
     
     #assert abs(evals[SOMO1] - evals[SOMO2]) < 1e-12, "SOMOs are not degenerate!"
     
-    
+    '''
     print('\nEnforcing Spatial Symmetry in x for denerate SOMOs\n')
     x_operator = cartesian_operators(coord,orbs)[1]
     SOMOs_in_x_basis = x_operator[np.ix_([SOMO1, SOMO2], [SOMO1, SOMO2])]
     _, x_rotation = np.linalg.eigh(SOMOs_in_x_basis)
     SOMOs_x_rot = np.dot(orbs[:, [SOMO1, SOMO2]], x_rotation)
     orbs[:, [SOMO1, SOMO2]] = SOMOs_x_rot
-    '''
+    
     print('\nEnforcing Spatial Symmetry in y for denerate SOMOs\n')
     y_operator = cartesian_operators(coord,orbs)[2]
     SOMOs_in_y_basis = y_operator[np.ix_([SOMO1, SOMO2], [SOMO1, SOMO2])]
@@ -888,6 +931,9 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
     SOMOs_z_rot = np.dot(orbs[:, [SOMO1, SOMO2]], z_rotation)
     orbs[:, [SOMO1, SOMO2]] = SOMOs_z_rot
     '''
+    
+    #print('\nDelocalising SOMOs')
+    #orbs = delocalise_somos(orbs, SOMO1, SOMO2)
     
     return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
 
@@ -3350,7 +3396,7 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, state0_tdms, r
                     print("%s %10.5f" %(str, ci_coeffs[j,i]))
                     out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
         
-        osc = 2.0/3.0 * ((ci_energies[i] - ci_energies[0]) / toev) * (state0_tdms[i,0]**2 + state0_tdms[i,1]**2 + state0_tdms[i,2]**2)  # Calculating Oscillator Strength
+        osc = 2.0/3.0 * ((ci_energies[i] - ci_energies[0]) / toev) * (state0_tdms[i,0]**2 + state0_tdms[i,1]**2 + state0_tdms[i,2]**2)  # Calculating Oscillator Strength 
         osc_array[i] = osc
         s2_array[i] = spin
         print("TDMs with State 0")

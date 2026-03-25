@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser(description="Plots the computed spectrum produc
 parser.add_argument('inputfile', type=str, help="Gnuplot file to be plotted")
 parser.add_argument('molecule_name', type=str, help="The name of the molecule")
 args = parser.parse_args()
-wavelength = np.linspace(250, 650, 405)
+wavelength = np.linspace(250, 850, 605)
 broad = np.zeros_like(wavelength)
 
 with open(args.inputfile, 'r') as file:
