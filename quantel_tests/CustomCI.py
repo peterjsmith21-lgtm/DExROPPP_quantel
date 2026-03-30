@@ -1,9 +1,11 @@
+
 from quantel import MOintegrals
 from quantel.wfn.cisolver import CustomCI
 from Diradical_ExROPPP import main_scf
 from Diradical_ExROPPP import transform
 import numpy as np
 import argparse
+
 
 # TESTING CUSTOM CI SOLVER #
 
@@ -61,6 +63,7 @@ if __name__ == "__main__":
     nbeta = ndocc + 1
  
     Vscalar = 0
+    fac = 1 / np.sqrt(2)
 
     # h1e[a,b] = <psi_a|h1|psi_b>
     hopping_mo = transform_1e(hopping, orbs)
@@ -80,16 +83,50 @@ if __name__ == "__main__":
                             "a2b0", "b2a0", "ab20", "ba20", # HOMO to SOMO states
                             "2a0b", "2b0a", "20ab", "20ba"], # SOMO to LUMO states
                 (nalpha,nbeta)) 
-    print(ci.get_hamiltonian())
-    # Davidson solver
-    eci, x = ci.solve(10, verbose=5)
-    print('CI eigenvectors:', x)
-    print('CI energies', eci)
-   
-   
-    for i in range(10):
-        print(f'\nCI STATE NUMBER {i}')
-        x0 = np.copy(x[:,i])
-        print('S**2:', ci.get_s2(x0))
     
-    ci.cispace.print_vector(x[:,0],1e-10)
+
+    ham = ci.get_hamiltonian()
+    csf_basis = np.zeros((12,12))
+    # singlet xy
+    csf_basis[[0,1],0] = [fac,fac]
+    # x^2 - y^2
+    csf_basis[[2,3],1] = [fac,-fac]
+    # x^2 + y^2
+    csf_basis[[2,3],2] = [fac,fac]
+    # Ey
+    csf_basis[[4,5],3] = [fac,fac] # HOMO to SOMO1
+    csf_basis[[10,11],4] = [fac,fac] # SOMO1 to LUMO
+    # Ex
+    csf_basis[[6,7],5] = [fac,fac] # HOMO to SOMO2
+    csf_basis[[8,9],6] = [fac,fac] # SOMO2 to LUMO
+    # Triplet xy
+    csf_basis[[0,1],7] = [fac,-fac]
+    # Triplet Ey
+    csf_basis[[4,5],8] = [fac,-fac] # HOMO to SOMO1
+    csf_basis[[10,11],9] = [fac,-fac] # SOMO1 to LUMO
+    # Tripley Ex
+    csf_basis[[6,7],10] = [fac,-fac] # HOMO to SOMO2
+    csf_basis[[8,9],11] = [fac,-fac] # SOMO2 to LUMO
+    ham_csf = csf_basis.T @ ham @ csf_basis
+    #print(ham_csf)
+    e,v = np.linalg.eigh(ham_csf[:7,:7])
+    #print(e)
+    #print(v)
+    e,v = np.linalg.eigh(ham_csf[7:,7:])
+    #print(e)
+    #print(v)
+    #quit()
+
+
+    print("\nHamiltonian matrix:")
+    print(ham)
+    e,x = np.linalg.eigh(ham)
+
+    for i in range(10):
+        x0 = np.copy(x[:,i])
+        s2 = ci.get_s2(x0)
+        print(f"--------------------------------------------------------------------")
+        print(f"State {i}: E = {e[i]: 16.10f}, <S^2> = {s2: 8.6f}")
+        print(x0)
+        print(f"--------------------------------------------------------------------")
+        #ci.cispace.print_vector(x0,1e-6)

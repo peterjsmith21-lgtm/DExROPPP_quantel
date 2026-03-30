@@ -15,5 +15,10 @@ if __name__ == '__main__':
     from Diradical_ExROPPP import write_gnu as gnu_Exroppp
 
     # For doing individual ExROPPP calculations on one monoradical
-    strng,ci_energies_array, osc_array, s2_array  = rad_calc(file=optimized_geometry, params = params)
-    gnu_Exroppp(strng, optimized_geometry)
+    strngs,ci_energies_array, osc_arrays, s2_array  = rad_calc(file=optimized_geometry, params = params)
+    #Get spectrum plot for triplet
+    filename = optimized_geometry + 'Triplet_Ref'
+    gnu_Exroppp(strngs[0], filename)
+    #Get spectrum plot for singlet
+    filename = optimized_geometry + 'Singlet_Ref'
+    gnu_Exroppp(strngs[1], filename)

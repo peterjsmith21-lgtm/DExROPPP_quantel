@@ -478,7 +478,7 @@ class MODrawer(MolecularOrbitals):
         atom_pair = np.asarray(list(combinations(list_atoms, 2)))
 
         # Tolerance using C-Cl bond in Bohr of 1.77 Angstroms
-        bool_array = np.linalg.norm(dist_pair[:,1] - dist_pair[:,0], axis=1) < 3.5
+        bool_array = np.linalg.norm(dist_pair[:,1] - dist_pair[:,0], axis=1) <  3.5
         
         atom_array = atom_pair[bool_array]
         bond_array = dist_pair[bool_array]
@@ -635,7 +635,8 @@ if __name__ == "__main__":
     # (Assuming MODrawer is defined in the same script or imported)
     MolClass = MODrawer(out_file, Molecule)
 
-    print(f"The SOMO is MO{MolClass.somo_index}")
+    print(f"The SOMO1 is MO{MolClass.somo_index}")
+    print(f"The SOMO2 is MO{MolClass.somo_index + 1}")
 
     # Finally, draw the MO
     MolClass.mo_drawer(

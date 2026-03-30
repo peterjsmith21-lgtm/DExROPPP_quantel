@@ -7,7 +7,8 @@
             "request": "launch",
             "program": "~/MSci_Code/Diradical-EXROPPP/main.py",
             "console": "integratedTerminal",
-            "args": ["~/MSci_Code/Diradical-EXROPPP/test_molecules/pseudo-p-PCP-TTM2.xyz"],
+            "cwd": "${workspaceFolder}/test_molecules",
+            "args": ["~/MSci_Code/Diradical-EXROPPP/test_molecules/Cyclobutadiene.xyz"],
             "justMyCode": true
         }
     ]
