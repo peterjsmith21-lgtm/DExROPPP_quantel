@@ -88,13 +88,13 @@ Frobenius norm of matrix - matrix transpose = 0.000000.
 Energy of CSF |1^OS>: -2.3636802108987314
 Energy of CSF |1^ZW0>: -3.3432148307637597
 Energy of CSF |1^ZW0'>: -3.3432148307637597
-Energy of CSF |1^HS1_1>: 3.5171784364676455
-Energy of CSF |1^HS2_1>: 3.5171784364676455
-Energy of CSF |1^SL1_0'>: 2.3225444577970586
+Energy of CSF |1^HS1_1>: 2.32254445779706
+Energy of CSF |1^HS2_1>: 2.32254445779706
+Energy of CSF |1^SL1_1'>: 2.3225444577970586
 Energy of CSF |1^SL2_1'>: 2.3225444577970586
 Energy of CSF |1^HL1_11'>: -4.322749450628788
-Energy of CSF |1^HL2_11'>: 0.8544105210150197
-Energy of CSF |3^OS>: 0.8544105210150197
+Energy of CSF |1^HL2_11'>: -0.34022345765556594
+Energy of CSF |3^OS>: -0.34022345765556594
 Energy of CSF |3^HS1_1>: -0.3402234576555676
 Energy of CSF |3^HS2_1>: -0.3402234576555676
 Diagonalizing Hamiltonian using the dense matrix method ...
@@ -135,13 +135,13 @@ TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.0
 
 State 2 1.959 eV 
 Excitation    CI Coef
-|1^ZW0>   -0.70711
-|1^ZW0'>   -0.70711
+|1^ZW0>    0.70711
+|1^ZW0'>    0.70711
 TDMs with Triplet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
-TDMX:-0.000   TDMY:-0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
+TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 
 
@@ -152,114 +152,114 @@ TDMs with Triplet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
-TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
+TDMX:0.000   TDMY:-0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 
 
-State 4 3.121 eV 
+State 4 2.651 eV 
 Excitation    CI Coef
-|3^HS2_1>   -0.54274
-|3^SL2_1'>   -0.83835
+|3^HS1_1>   -0.11625
+|3^HS2_1>   -0.69749
+|3^SL1_1'>    0.11625
+|3^SL2_1'>   -0.69749
 TDMs with Triplet 'Ground' state
-TDMX:0.296   TDMY:0.268   TDMZ:0.000   Oscillator Strength:0.01218   <S**2>: 2.000
+TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 
 
-State 5 3.121 eV 
+State 5 2.651 eV 
 Excitation    CI Coef
-|3^HS1_1>   -0.54274
-|3^SL1_1'>    0.83835
+|3^HS1_1>   -0.69749
+|3^HS2_1>    0.11625
+|3^SL1_1'>    0.69749
+|3^SL2_1'>    0.11625
 TDMs with Triplet 'Ground' state
-TDMX:-0.268   TDMY:0.296   TDMZ:0.000   Oscillator Strength:0.01218   <S**2>: 2.000
+TDMX:-0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 
 
-State 6 5.783 eV 
+State 6 5.314 eV 
 Excitation    CI Coef
-|1^HS1_1>    0.18497
-|1^HS2_1>   -0.51100
-|1^SL1_1'>   -0.28572
-|1^SL2_1'>    0.78932
+|1^HS1_1>    0.70643
+|1^SL1_1'>   -0.70643
 TDMs with Triplet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
-TDMX:-0.361   TDMY:0.169   TDMZ:0.000   Oscillator Strength:0.02258   <S**2>: 0.000
+TDMX:-0.000   TDMY:-0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 
 
-State 7 5.783 eV 
+State 7 5.314 eV 
 Excitation    CI Coef
-|1^HS1_1>    0.51100
-|1^HS2_1>    0.18497
-|1^SL1_1'>   -0.78932
-|1^SL2_1'>   -0.28572
+|3^HS1_1>   -0.22361
+|3^HS2_1>    0.67082
+|3^SL1_1'>   -0.22361
+|3^SL2_1'>   -0.67082
 TDMs with Triplet 'Ground' state
-TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
---------------------------------------------------------------------
-TDMs with Singlet 'Ground' state
-TDMX:-0.169   TDMY:-0.361   TDMZ:0.000   Oscillator Strength:0.02258   <S**2>: 0.000
---------------------------------------------------------------------
-
-
-State 8 6.039 eV 
-Excitation    CI Coef
-|3^HS1_1>   -0.39225
-|3^HS2_1>    0.74216
-|3^SL1_1'>   -0.25394
-|3^SL2_1'>   -0.48047
-TDMs with Triplet 'Ground' state
-TDMX:1.782   TDMY:0.550   TDMZ:0.000   Oscillator Strength:0.51458   <S**2>: 2.000
+TDMX:1.706   TDMY:0.853   TDMZ:0.000   Oscillator Strength:0.47353   <S**2>: 2.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 
 
-State 9 6.039 eV 
+State 8 5.314 eV 
 Excitation    CI Coef
-|3^HS1_1>   -0.74216
-|3^HS2_1>   -0.39225
-|3^SL1_1'>   -0.48047
-|3^SL2_1'>    0.25394
+|3^HS1_1>   -0.67082
+|3^HS2_1>   -0.22361
+|3^SL1_1'>   -0.67082
+|3^SL2_1'>    0.22361
 TDMs with Triplet 'Ground' state
-TDMX:0.550   TDMY:-1.782   TDMZ:0.000   Oscillator Strength:0.51458   <S**2>: 2.000
+TDMX:0.853   TDMY:-1.706   TDMZ:0.000   Oscillator Strength:0.47353   <S**2>: 2.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 
 
-State 10 8.702 eV 
+State 9 5.314 eV 
 Excitation    CI Coef
-|1^HS1_1>   -0.34597
-|1^HS2_1>   -0.76484
-|1^SL1_1'>   -0.22397
-|1^SL2_1'>   -0.49514
+|1^HS2_1>    0.70643
+|1^SL2_1'>   -0.70643
 TDMs with Triplet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
-TDMX:0.658   TDMY:-1.745   TDMZ:0.000   Oscillator Strength:0.74147   <S**2>: 0.000
+TDMX:0.000   TDMY:-0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 
 
-State 11 8.702 eV 
+State 10 7.977 eV 
 Excitation    CI Coef
-|1^HS1_1>   -0.76484
-|1^HS2_1>    0.34597
-|1^SL1_1'>   -0.49514
-|1^SL2_1'>    0.22397
+|1^HS1_1>   -0.60181
+|1^HS2_1>    0.37125
+|1^SL1_1'>   -0.60181
+|1^SL2_1'>    0.37125
 TDMs with Triplet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
-TDMX:-1.745   TDMY:-0.658   TDMZ:0.000   Oscillator Strength:0.74147   <S**2>: 0.000
+TDMX:-1.856   TDMY:-0.440   TDMZ:0.000   Oscillator Strength:0.71081   <S**2>: 0.000
+--------------------------------------------------------------------
+
+
+State 11 7.977 eV 
+Excitation    CI Coef
+|1^HS1_1>   -0.37125
+|1^HS2_1>   -0.60181
+|1^SL1_1'>   -0.37125
+|1^SL2_1'>   -0.60181
+TDMs with Triplet 'Ground' state
+TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
+--------------------------------------------------------------------
+TDMs with Singlet 'Ground' state
+TDMX:0.440   TDMY:-1.856   TDMZ:0.000   Oscillator Strength:0.71081   <S**2>: 0.000
 --------------------------------------------------------------------
 
