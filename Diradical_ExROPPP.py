@@ -899,13 +899,13 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
     SOMOs_z_rot = np.dot(orbs[:, [SOMO1, SOMO2]], z_rotation)
     orbs[:, [SOMO1, SOMO2]] = SOMOs_z_rot
     '''
-    '''
+    
     print('\nDelocalising SOMOs')
     orbs = delocalise_somos(orbs, SOMO1, SOMO2)
     density_rot = density(orbs, ndocc)
     fock_mat = fock(repulsion, hopping, density_rot, natoms_c, natoms_n, natoms, n_list)
     energy2 = energy(hopping, repulsion, fock_mat, density_rot, orbs, ndocc)
-    '''
+    
     print('ENERGY0:', energy2)
     return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
 
@@ -4269,10 +4269,16 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
                 elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (nddsings + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
                     block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
                     k = j - block_start
-                    o_orb1 = int((np.sqrt(8 * (nddsings - 1 - k) + 1) - 1) / 2)
-                    elements_in_lower_rows = o_orb1 * (o_orb1 + 1) // 2
-                    o_orb2 = (nddsings - 1 - k) - elements_in_lower_rows
-                    str = f"|1^HSD_{o_orb1}{o_orb2}'>"
+                    o_orb1 = ndocc 
+                    o_orb2 = ndocc
+                    temp_k = k
+                    row_size = ndocc
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size -= 1
+                    o_orb2 = o_orb1 - temp_k
+                    str = f"|1^HSD_{o_orb1}{o_orb2}>"
                     # S^2 = 0
             ########### TRIPLET CSFs ###########
             # Triplet ground state (|OS3>)
@@ -4318,12 +4324,17 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
                     str = f"|3^HL3_{o_orb}{v_orb}'>" 
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
                 elif j > (nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (nddtrips + nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+                    block_start = nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
                     k = j - block_start
-                    o_orb1 = int((np.sqrt(8 * (nddsings - 1 - k) + 1) + 1) / 2)
-                    elements_in_lower_rows = o_orb1 * (o_orb1 - 1) // 2
-                    o_orb2 = (nddsings - 1 - k) - elements_in_lower_rows
-                    str = f"|3^HSD_{o_orb1}{o_orb2}'>"
+                    o_orb1 = ndocc
+                    temp_k = k
+                    row_size = o_orb1 - 1
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size = o_orb1 - 1
+                    o_orb2 = (o_orb1 - 1) - temp_k
+                    str = f"|3^HSD_{o_orb1}{o_orb2}>"
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Quintet HOMO to LUMO (|5^HL>)
                 elif j > (nddtrips + nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
@@ -4468,6 +4479,7 @@ def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
                     o_orb = ndocc - ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
                     v_orb = ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
                     str = f"|5^HL_{o_orb}{v_orb}'>"
+                print(f"Energy of CSF {str}:", np.diag(ham_rot)[j])
             
             elif ci_type == 'XCISD':
                 if j == 0: 
@@ -4496,14 +4508,19 @@ def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
                     o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
                     v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
                     str = f"|1^HL2_{o_orb}{v_orb}'>"
-                # Singlet Double HOMO to SOMO (|1^HSD>)
                 elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (nddsings + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
                     block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
                     k = j - block_start
-                    o_orb1 = int((np.sqrt(8 * (nddsings - 1 - k) + 1) - 1) / 2)
-                    elements_in_lower_rows = o_orb1 * (o_orb1 + 1) // 2
-                    o_orb2 = (nddsings - 1 - k) - elements_in_lower_rows
-                    str = f"|1^HSD_{o_orb1}{o_orb2}'>"
+                    o_orb1 = ndocc 
+                    o_orb2 = ndocc
+                    temp_k = k
+                    row_size = ndocc
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size -= 1
+                    o_orb2 = o_orb1 - temp_k
+                    str = f"|1^HSD_{o_orb1}{o_orb2}>"
                 elif j == (nddsings + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
                     str = "|3^OS>"
                 elif j > (nddsings + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (nddsings + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
@@ -4531,12 +4548,17 @@ def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
                     v_orb = ((j - (nddsings + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
                     str = f"|3^HL3_{o_orb}{v_orb}'>"
                 elif j > (nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (nddtrips + nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+                    block_start = nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
                     k = j - block_start
-                    o_orb1 = int((np.sqrt(8 * (nddsings - 1 - k) + 1) + 1) / 2)
-                    elements_in_lower_rows = o_orb1 * (o_orb1 - 1) // 2
-                    o_orb2 = (nddsings - 1 - k) - elements_in_lower_rows
-                    str = f"|3^HSD_{o_orb1}{o_orb2}'>"
+                    o_orb1 = ndocc
+                    temp_k = k
+                    row_size = o_orb1 - 1
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size = o_orb1 - 1
+                    o_orb2 = (o_orb1 - 1) - temp_k
+                    str = f"|3^HSD_{o_orb1}{o_orb2}>"
                 elif j > (nddtrips + nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
                     o_orb = ndocc - ((j - (nddtrips + nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
                     v_orb = ((j - (nddtrips + nddsings + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
@@ -4606,7 +4628,7 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         out.write("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
         
         # Print energies of CSFs
-        print_csf_info(ham_rot, norbs, ndocc, ci_type=ci_type)
+        #print_csf_info(ham_rot, norbs, ndocc, ci_type=ci_type)
         
         # Set rng and cutoff_energy
         nstates = ham_rot.shape[0]
@@ -4648,7 +4670,7 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         tdms = (state0_tdms, state1_tdms) 
         
         # Print information about CI states
-        strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type=ci_type, csf_tol=0.1)
+        strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type=ci_type, csf_tol=0.05)
         strngs = (strngs[0][1:], strngs[1][1:])
     return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
 
@@ -7224,7 +7246,7 @@ def rad_calc(file,params):
                 print("\nDensity Matrix:")
                 print(dens_mo)
                 sys.exit()
-    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_type = 'XCISD')
+    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_type = 'XCIS')
     return strngs, ci_energies_array, osc_arrays, s2_array  #return gnuplot data for plotting spectrum
 
 

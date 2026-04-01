@@ -94,7 +94,7 @@ Energy of CSF |1^SL1_1'>: 2.3225444577970586
 Energy of CSF |1^SL2_1'>: 2.3225444577970586
 Energy of CSF |1^HL1_11'>: 6.5809063949127395
 Energy of CSF |1^HL2_11'>: 7.98830374635788
-Energy of CSF |1^HSD_00'>: 5.325535830905253
+Energy of CSF |1^HSD_11>: 5.325535830905253
 Energy of CSF |3^OS>: -4.322749450628788
 Energy of CSF |3^HS1_1>: -0.34022345765556594
 Energy of CSF |3^HS2_1>: -0.34022345765556594
@@ -137,7 +137,7 @@ TDMs with Triplet 'Ground' state
 TDMX:-0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
-TDMX:-0.000   TDMY:-0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
+TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.000
 --------------------------------------------------------------------
 
 
@@ -146,7 +146,7 @@ Excitation    CI Coef
 |1^ZW0>    0.67219
 |1^ZW0'>    0.67219
 |1^HL1_11'>    0.16113
-|1^HSD_00'>   -0.26526
+|1^HSD_11>   -0.26526
 TDMs with Triplet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
@@ -290,9 +290,9 @@ Excitation    CI Coef
 |1^ZW0>    0.21707
 |1^ZW0'>    0.21707
 |1^HL1_11'>   -0.61406
-|1^HSD_00'>    0.72711
+|1^HSD_11>    0.72711
 TDMs with Triplet 'Ground' state
-TDMX:0.000   TDMY:-0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
+TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------
 TDMs with Singlet 'Ground' state
 TDMX:-0.000   TDMY:-0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
@@ -335,7 +335,7 @@ TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 2.0
 State 17 13.844 eV 
 Excitation    CI Coef
 |1^HL1_11'>   -0.77263
-|1^HSD_00'>   -0.63320
+|1^HSD_11>   -0.63320
 TDMs with Triplet 'Ground' state
 TDMX:0.000   TDMY:0.000   TDMZ:0.000   Oscillator Strength:0.00000   <S**2>: 0.000
 --------------------------------------------------------------------

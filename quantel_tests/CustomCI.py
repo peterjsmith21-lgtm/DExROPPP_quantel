@@ -83,11 +83,20 @@ if __name__ == "__main__":
     #dip_ints = MOintegrals(0,mux,0,nmo)
 
     # Setup and solve FCI
+    '''
     ci = CustomCI(mo_ints, ["2ab0", "2ba0", "2200", "2020", # Reference states
                             "a2b0", "b2a0", "ab20", "ba20", # HOMO to SOMO states
                             "2a0b", "2b0a", "20ab", "20ba", # SOMO to LUMO states
                             "aabb", "abab", "abba", "bbaa", "baba", "baab", # HOMO to LUMO states
                             "0220"], # Double Zwitterion State
+                (nalpha,nbeta))
+    '''
+    # CI matrix for meta-xylylene
+    ci = CustomCI(mo_ints, ["222ab000", "222ba000", "22220000", "22202000", # Reference states
+                            "22a2b000", "22b2a000", "22ab2000", "22ba2000", # HOMO to SOMO states
+                            "222a0b00", "222b0a00", "2220ab00", "2220ba00", # SOMO to LUMO states
+                            "22aabb00", "22abab00", "22abba00", "22bbaa00", "22baba00", "22baab00", # HOMO to LUMO states
+                            "22022000"], # Double Zwitterion State
                 (nalpha,nbeta)) 
     
 
