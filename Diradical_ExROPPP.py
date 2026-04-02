@@ -711,7 +711,7 @@ def cartesian_operators(coords,hf_orbs):
     return full_cartesian_operator, x_operator, y_operator, z_operator
 
 class DIIS:
-    def __init__(self, max_iter=100):
+    def __init__(self, max_iter=50):
         self.max_iter = max_iter
         self.fock_list = []
         self.error_list = []
@@ -719,7 +719,7 @@ class DIIS:
     def get_extrapolated_fock(self, F, D):
         error = F @ D - D @ F
         
-        self.fock_list.append(F)
+        self.fock_list.append(F.copy())
         self.error_list.append(error)
         
         if len(self.fock_list) > self.max_iter:
@@ -755,21 +755,22 @@ class DIIS:
         return F_ext
     
     
-def get_level_shifted_fock(Fock_mat, Dens, shift_ext):
+def get_level_shifted_fock(Fock_mat, coeffs, ndocc, shift_virt, shift_somo=0):
     """
     F: Standard Fock matrix
     D: Current Density matrix (2 for Docc, 1 for SOMOs)
     shift_ext: The shift value 'b' (e.g., 0.2 Hartrees)
     """
-    n = Fock_mat.shape[0]
-    identity = np.eye(n)
+    P_docc = coeffs[:, :ndocc] @ coeffs[:, :ndocc].T
+    P_somo = coeffs[:, ndocc:ndocc+2] @ coeffs[:, ndocc:ndocc+2].T
+    P_virt = coeffs[:, ndocc+2:] @ coeffs[:, ndocc+2:].T
+    assert np.allclose(P_docc + P_somo + P_virt, np.eye(coeffs.shape[0]), atol=1e-8), \
+    "Projectors do not sum to identity — check MO coefficients are orthonormal"
     
-    # Projector for the Virtual space
-    # (I - 0.5*D) is 0 for weight 2, 0.5 for weight 1, 1.0 for weight 0
-    v_projector = identity - 0.5 * Dens
+    F_shifted = Fock_mat + shift_virt * P_virt
     
-    # Apply the shift
-    F_shifted = Fock_mat + shift_ext * v_projector
+    if shift_somo > 0:
+        F_shifted += shift_somo * P_somo
     
     return F_shifted
 
@@ -790,9 +791,10 @@ def delocalise_somos(orbs, i, j):
 
 
 #Main HF function
-def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
+def main_scf(file, params, maxcycles=1500, d_tol=5e-15):
     '''
-    main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
+    Main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
+    For molecules that struggle to converge, a level shift can be applied...
     
     Args:
         - file (str): The filename of the input geometry file for the radical molecule.
@@ -827,12 +829,12 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
     guess_dens = density(guess_orbs,ndocc)
     #iterate until convergence 
     energy1=0
-    diis = DIIS(max_iter=100)
+    diis = DIIS(max_iter=10)
     level_shift = False
+    shift_virt = 0
+    shift_somo = 0
     use_diis = False
-    shift = 5
-    if level_shift:
-        print(f'Using Level Shift of {shift}')
+    damping = False
     print("\n-------------------------------------")
     print("Restricted Open-shell PPP Calculation")
     print("-------------------------------------\n")
@@ -844,15 +846,29 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
             print(f"\nEnergy not converged after {maxcycles} cycles")
             break
         fock_mat = fock(repulsion, hopping, guess_dens, natoms_c, natoms_n, natoms, n_list)
-        if iter == 500:
-            print('---Implementing DIIS to speed up convergence---')
+        if iter > 50 and not damping and conv_crit > 0.01:
+            damping = True
+            alpha = 0.1
+            print(f'\n---Applying damping with alpha={alpha} to aid convergence---\n')
+        if damping:
+            if conv_crit < 1e-5:
+                alpha = 0.2
+            elif conv_crit < 1e-10:
+                alpha = 0.5
+        if iter == 200 and conv_crit > 0.001:
+            print(f'\n---Applying DIIS to aid convergence---\n')
             use_diis = True
-            level_shift = False
+        if damping:
+            fock_mat = alpha * fock_mat + (1 - alpha) * guess_fock
         if level_shift:
-            fock_mat = get_level_shifted_fock(fock_mat, guess_dens, shift_ext = shift)
+            fock_mat = get_level_shifted_fock(fock_mat, orbs, ndocc, shift_virt = shift_virt, shift_somo = shift_somo)
         if use_diis:
             fock_mat = diis.get_extrapolated_fock(fock_mat, guess_dens)
         evals, orbs = np.linalg.eigh(fock_mat)
+        '''
+        if iter == 25 or iter == 26 or iter == 75 or iter == 76 or iter == 125 or iter == 126 or iter == 175 or iter == 176:
+            print(f'Orbital energies at iteration {iter}:\n{evals}')
+        '''
         dens = density(orbs,ndocc)
         energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
         conv_crit = np.absolute(guess_dens-dens).max()
@@ -861,6 +877,8 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
             break
         energy1 = energy2
         guess_dens = dens
+        guess_fock = fock_mat
+        
         '''
         if iter == maxcycles - 5:
             print("\n--------------------------")
@@ -900,7 +918,7 @@ def main_scf(file, params, maxcycles=1000, d_tol=5e-15):
     orbs[:, [SOMO1, SOMO2]] = SOMOs_z_rot
     '''
     
-    print('\nDelocalising SOMOs')
+    print('\nLocalising SOMOs')
     orbs = delocalise_somos(orbs, SOMO1, SOMO2)
     density_rot = density(orbs, ndocc)
     fock_mat = fock(repulsion, hopping, density_rot, natoms_c, natoms_n, natoms, n_list)
