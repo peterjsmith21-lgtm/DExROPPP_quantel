@@ -59,7 +59,8 @@ def read_geom(file):
     natoms_n=0 
     natoms_cl=0 
     natoms_h=0 
-    for line in f: # Read through lines of file
+    for i, line in enumerate(f): # Read through lines of file
+        index = i-2 # Set start of geometry to 2 lines before first line of geometry (to allow for different file formats)
         splt_ln=line.split()
         if line == '\n':
             break
@@ -284,7 +285,7 @@ def ntype(array_all, atoms, natoms_c, natoms_n):
     return nlist, atoms   
    
 
-def conec(ncarb, dist_array):
+def conec(ncarb, dist_array, natoms_c):
     '''
     Group atoms in alternant hydrocarbons into starred and unstarred lists.
     
@@ -295,33 +296,43 @@ def conec(ncarb, dist_array):
         - star (list): List of indices of starred atoms.
         - unst (list): List of indices of unstarred atoms.
     '''
-    star = []
-    unst = []
-    star.append(0)
-    satom = [0]
-    for n in range(ncarb):
-        if len(star)+len(unst) == ncarb:
-            break
-        uatom = []
-        for i in satom:
-            for j in range(i+1,ncarb):
-                if dist_array[i,j] < cutoff and j not in unst:
-                    uatom.append(j)
-                    unst.append(j)
-        satom = []            
-        for i in uatom:
-            for j in range(i+1,ncarb):
-                if dist_array[i,j] < cutoff and j not in star:
-                    satom.append(j)
-                    star.append(j)
+    ncarb_pi = natoms_c
+    assignment = [-1] * ncarb_pi  # -1 = unassigned, 0 = unstarred, 1 = starred
+
+    for start in range(ncarb_pi):
+        if assignment[start] != -1:
+            continue  # already assigned, handle disconnected fragments
+
+        # BFS from this starting atom
+        queue = [start]
+        assignment[start] = 1  # starred
+
+        while queue:
+            atom = queue.pop(0)
+            for neighbour in range(ncarb_pi):
+                if neighbour == atom:
+                    continue
+                if dist_array[atom, neighbour] < cutoff:
+                    if assignment[neighbour] == -1:
+                        # Assign opposite set
+                        assignment[neighbour] = 1 - assignment[atom]
+                        queue.append(neighbour)
+                    elif assignment[neighbour] == assignment[atom]:
+                        raise ValueError(
+                            f"Non-alternant system: atom {neighbour} conflicts "
+                            f"with atom {atom} — odd-membered ring detected"
+                        )
+
+    star = [i for i in range(ncarb_pi) if assignment[i] == 1]
+    unst = [i for i in range(ncarb_pi) if assignment[i] == 0]
+
+    # Convention: starred set is the larger one
     if len(star) < len(unst):
         print('Swapping starred and unstarred atoms ...')
-        array = star
-        star = unst
-        unst = array
-    print(' ')               
-    print('Starred atoms: ' +str(star))
-    print('Un-starred atoms: ' +str(unst)+'\n')
+        star, unst = unst, star
+
+    print(f'\nStarred atoms: {star}')
+    print(f'Unstarred atoms: {unst}\n')
     return star, unst
 
 # Routine to group bonding and antibonding orbitals into coulson-rushbrooke pairs
@@ -390,7 +401,7 @@ def order_orbs(ncarb, orbs, orb_energies, alt):
   
 
 
-def orb_sign(orbs,orb_energies,nelec,dist_array,alt):
+def orb_sign(orbs,orb_energies,nelec,dist_array,natoms_c,alt):
     '''
     Adjusts orbital phases to satisfy alternant hydrocarbon symmetry.Ensures that starred atoms retain their sign 
     across a pair, while unstarred atoms undergo a phase inversion in the antibonding orbital.
@@ -400,6 +411,7 @@ def orb_sign(orbs,orb_energies,nelec,dist_array,alt):
         orb_energies (ndarray): Array of orbital energies.
         nelec (int): Total number of electrons in the system.
         dist_array (ndarray): Matrix of inter-atomic distances.
+        natoms_c (int): Number of carbon atoms in the molecule.
         alt (bool): Alternacy status flag.
 
     Returns:
@@ -408,12 +420,12 @@ def orb_sign(orbs,orb_energies,nelec,dist_array,alt):
     if alt==True:
         print('\nGrouping orbitals according to alternacy symmetry...')
         ncarb = orbs.shape[0]
-        somo_energy = orb_energies[int((nelec-1)/2)]
+        average_somo_energy = (np.abs(orb_energies[int((nelec-1)/2)] - orb_energies[int((nelec+1)/2)])/2) / 2
         for i in range(orb_energies.shape[0]):
-            orb_energies[i] = orb_energies[i] - somo_energy
+            orb_energies[i] = orb_energies[i] - average_somo_energy
         orb_list,alt = order_orbs(ncarb,orbs,orb_energies,alt)
     if alt==True:
-        star,unst = conec(ncarb,dist_array)
+        star,unst = conec(ncarb,dist_array,natoms_c)
         print('\nInverting orbital phases according to alternacy symmetry...\n')
         for i,ip in orb_list:
             for satom in star:
@@ -917,13 +929,13 @@ def main_scf(file, params, maxcycles=1500, d_tol=5e-15):
     SOMOs_z_rot = np.dot(orbs[:, [SOMO1, SOMO2]], z_rotation)
     orbs[:, [SOMO1, SOMO2]] = SOMOs_z_rot
     '''
-    
+    '''
     print('\nLocalising SOMOs')
     orbs = delocalise_somos(orbs, SOMO1, SOMO2)
     density_rot = density(orbs, ndocc)
     fock_mat = fock(repulsion, hopping, density_rot, natoms_c, natoms_n, natoms, n_list)
     energy2 = energy(hopping, repulsion, fock_mat, density_rot, orbs, ndocc)
-    
+    '''
     print('ENERGY0:', energy2)
     return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
 
@@ -2552,7 +2564,7 @@ def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
     dipoles[1,0,:] = dipoles[0,1,:] 
     #3 <OS1|mu|ZW0'> 
     dipoles[0,2,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
-    dipoles[2,0,:] = dipoles[0,1,:] 
+    dipoles[2,0,:] = dipoles[0,2,:] 
     #4 <OS1|mu|HS1> 
     block_index = 3
     for col in range(block_index, block_index + ndocc):
@@ -2649,7 +2661,12 @@ def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
     #26 <HS1|mu|HS2>
     col_block_index = ndocc + 3
     for row in range(row_block_index, row_block_index + ndocc):
-        dipoles[row,row,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
+                dipoles[col,row,:] = dipoles[row,col, :]
     #27 <HS1|mu|SL1> = 0
     #28 <HS1|mu|SL2> = 0
     #29 <HS1|mu|HL1>
@@ -2732,7 +2749,12 @@ def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
     #37 <SL1|mu|SL2>
     col_block_index = nvirt + 2 * ndocc + 3
     for row in range(row_block_index, row_block_index + nvirt):
-        dipoles[row,row,:] = dip1el[SOMO1,SOMO2,:]
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row,col,:] = dip1el[SOMO1,SOMO2,:]
+                dipoles[col,row,:] = dipoles[row,col,:]
     #38 <SL1|mu|HL1>
     col_block_index = 2 * nvirt + 2 * ndocc + 3
     for row in range(row_block_index, row_block_index + nvirt):
@@ -2878,7 +2900,7 @@ def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
         o_orb = (col - col_index) // nvirt # Increase o_orb after every nvirt cols
         v_orb = (col - col_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
         dipoles[row_index,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
-        dipoles[col,row_index,:] = dipoles[0,col,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
     #52 <OS3|mu|HL2> = 0
     #53 <OS3|mu|HL3> = 0
     
@@ -2901,7 +2923,12 @@ def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
     #55 <HS1|mu|HS2>
     col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
     for row in range(row_block_index, row_block_index + ndocc):
-        dipoles[row,row,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
     #56 <HS1|mu|SL1> = 0
     #57 <HS1|mu|SL2> = 0
     #58 <HS1|mu|HL1>
@@ -3004,7 +3031,12 @@ def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
     #67 <SL1|mu|SL2>
     col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
     for row in range(row_block_index, row_block_index + nvirt):
-        dipoles[row,row,:] = -dip1el[SOMO1,SOMO2,:]
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1,SOMO2,:]
+                dipoles[col,row,:] = dipoles[row,col,:]
     #68 <SL1|mu|HL1>
     col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
     for row in range(row_block_index, row_block_index + nvirt):
@@ -4065,6 +4097,8 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
     nddsings = int((ndocc ** 2 + ndocc) / 2)
     strng3 = ""
     strng1 = ""
+    strng3_shift = ""
+    strng1_shift = ""
     nvirt = norbs - ndocc - 2
     for i in range(rng): # Loop over CIS states
         if ci_energies[i] - ci_energies[0] > cutoff_energy:
@@ -4373,9 +4407,11 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
                 print('Ground state is singlet')
                 singlet = 0
                 triplet = 1
-                
+
         osc3 = 2.0/3.0 * ((ci_energies[i] - ci_energies[triplet]) / toev) * (tdms[triplet][i,0]**2 + tdms[triplet][i,1]**2 + tdms[triplet][i,2]**2)  # Calculating Oscillator Strength with Triplet Ground state
         osc1 = 2.0/3.0 * ((ci_energies[i] - ci_energies[singlet]) / toev) * (tdms[singlet][i,0]**2 + tdms[singlet][i,1]**2 + tdms[singlet][i,2]**2)  # Calculating Oscillator Strength with Singlet Ground state
+        osc3_shift = 2.0/3.0 * ((ci_energies[i] - ci_energies[0]) / toev) * (tdms[triplet][i,0]**2 + tdms[triplet][i,1]**2 + tdms[triplet][i,2]**2)  # Calculating Oscillator Strength with Triplet Ground state
+        osc1_shift = 2.0/3.0 * ((ci_energies[i] - ci_energies[0]) / toev) * (tdms[singlet][i,0]**2 + tdms[singlet][i,1]**2 + tdms[singlet][i,2]**2)  # Calculating Oscillator Strength with Singlet Ground state
         osc_array3[i] = osc3
         osc_array1[i] = osc1
         s2_array[i] = spin
@@ -4391,12 +4427,13 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
         out_file.write("TDMs with Singlet 'Ground' state")
         out_file.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[singlet][i,0], tdms[singlet][i,1], tdms[singlet][i,2], osc1, spin))
         out_file.write("--------------------------------------------------------------------\n")
-        strng3 = strng3 + broaden(20.0,osc3,ci_energies[i]-ci_energies[triplet])
+        #strng3 = strng3 + broaden(20.0,osc3,ci_energies[i]-ci_energies[triplet])
         strng3 = strng3 + broaden(FWHM,osc3,ci_energies[i]-ci_energies[triplet])
-        strng1 = strng1 + broaden(20.0,osc1,ci_energies[i]-ci_energies[singlet])
         strng1 = strng1 + broaden(FWHM,osc1,ci_energies[i]-ci_energies[singlet])
+        strng3_shift = strng3_shift + broaden(FWHM,osc3,ci_energies[i]-ci_energies[0])
+        strng1_shift = strng1_shift + broaden(FWHM,osc1,ci_energies[i]-ci_energies[0])
     
-    return (strng3, strng1), (osc_array3, osc_array1), s2_array
+    return (strng3, strng1, strng3_shift, strng1_shift), (osc_array3, osc_array1), s2_array
 
 
 def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
@@ -4682,6 +4719,14 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
             dip_array = dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates)
         elif ci_type == 'XCISD':
             dip_array = dipole_xcisd(coords,atoms,norbs,hf_orbs,ndocc,nstates)
+        
+        print("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... ")
+        print(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
+            {linalg.norm(dip_array[:, :, 1]-dip_array[:,:,1].T):.5f}, {linalg.norm(dip_array[:, :, 2]-dip_array[:,:,2].T):.5f}.\n")
+        out.write("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... \n")
+        out.write(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
+            {linalg.norm(dip_array[:, :, 1]-dip_array[:,:,1].T):.5f}, {linalg.norm(dip_array[:, :, 2]-dip_array[:,:,2].T):.5f}.\n")
+        
         dip_couplings = np.einsum("ijx,jk",dip_array,ci_coeffs)
         state0_tdms = np.einsum("j,jix",ci_coeffs[:,0].T, dip_couplings)
         state1_tdms = np.einsum("j,jix",ci_coeffs[:,1].T, dip_couplings)
@@ -4689,7 +4734,7 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         
         # Print information about CI states
         strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type=ci_type, csf_tol=0.05)
-        strngs = (strngs[0][1:], strngs[1][1:])
+        strngs = (strngs[0][1:], strngs[1][1:], strngs[2][1:], strngs[3][1:])
     return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
 
 
@@ -7112,7 +7157,7 @@ def rad_calc(file,params):
     filename = os.path.basename(file)
     coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy0,one_body,two_body,orb_energy,hf_orbs,fock_mat=main_scf(file,params)
     com,coord = re_center(coord,atoms_array,coord_w_h)
-    hf_orbs = orb_sign(hf_orbs,orb_energy,nelec,dist_array,alt)
+    hf_orbs = orb_sign(hf_orbs,orb_energy,nelec,dist_array,natoms_c,alt)
     print("\n--------------------------")
     print("Converged ROPPP Orbitals")
     print("--------------------------\n")

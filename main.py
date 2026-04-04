@@ -22,3 +22,8 @@ if __name__ == '__main__':
     #Get spectrum plot for singlet
     filename = optimized_geometry + 'Singlet_Ref'
     gnu_Exroppp(strngs[1], filename)
+    #Get spectrum plot for triplet with shifted energies
+    filename = optimized_geometry + 'Triplet_Shift'
+    gnu_Exroppp(strngs[2], filename)
+    filename = optimized_geometry + 'Singlet_Shift'
+    gnu_Exroppp(strngs[3], filename)
