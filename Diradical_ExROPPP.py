@@ -803,7 +803,7 @@ def delocalise_somos(orbs, i, j):
 
 
 #Main HF function
-def main_scf(file, params, maxcycles=1500, d_tol=5e-15):
+def main_scf(file, params, maxcycles=2000, d_tol=5e-15):
     '''
     Main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
     For molecules that struggle to converge, a level shift can be applied...
@@ -867,9 +867,11 @@ def main_scf(file, params, maxcycles=1500, d_tol=5e-15):
                 alpha = 0.2
             elif conv_crit < 1e-10:
                 alpha = 0.5
-        if iter == 200 and conv_crit > 0.001:
+        
+        if iter == 500 and conv_crit > 0.001:
             print(f'\n---Applying DIIS to aid convergence---\n')
             use_diis = True
+        
         if damping:
             fock_mat = alpha * fock_mat + (1 - alpha) * guess_fock
         if level_shift:
@@ -877,10 +879,6 @@ def main_scf(file, params, maxcycles=1500, d_tol=5e-15):
         if use_diis:
             fock_mat = diis.get_extrapolated_fock(fock_mat, guess_dens)
         evals, orbs = np.linalg.eigh(fock_mat)
-        '''
-        if iter == 25 or iter == 26 or iter == 75 or iter == 76 or iter == 125 or iter == 126 or iter == 175 or iter == 176:
-            print(f'Orbital energies at iteration {iter}:\n{evals}')
-        '''
         dens = density(orbs,ndocc)
         energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
         conv_crit = np.absolute(guess_dens-dens).max()
@@ -930,7 +928,7 @@ def main_scf(file, params, maxcycles=1500, d_tol=5e-15):
     orbs[:, [SOMO1, SOMO2]] = SOMOs_z_rot
     '''
     '''
-    print('\nLocalising SOMOs')
+    print('\nDelocalising SOMOs')
     orbs = delocalise_somos(orbs, SOMO1, SOMO2)
     density_rot = density(orbs, ndocc)
     fock_mat = fock(repulsion, hopping, density_rot, natoms_c, natoms_n, natoms, n_list)
