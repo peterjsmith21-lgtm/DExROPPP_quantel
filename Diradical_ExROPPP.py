@@ -4261,8 +4261,6 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
     ndcv1 = int((nvirt ** 2 + nvirt) / 2)
     strng3 = ""
     strng1 = ""
-    strng3_shift = ""
-    strng1_shift = ""
     for i in range(rng): # Loop over CIS states
         if ci_energies[i] - ci_energies[0] > cutoff_energy:
             break
@@ -4603,8 +4601,6 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
 
         osc3 = 2.0/3.0 * ((ci_energies[i] - ci_energies[triplet]) / toev) * (tdms[triplet][i,0]**2 + tdms[triplet][i,1]**2 + tdms[triplet][i,2]**2)  # Calculating Oscillator Strength with Triplet Ground state
         osc1 = 2.0/3.0 * ((ci_energies[i] - ci_energies[singlet]) / toev) * (tdms[singlet][i,0]**2 + tdms[singlet][i,1]**2 + tdms[singlet][i,2]**2)  # Calculating Oscillator Strength with Singlet Ground state
-        osc3_shift = 2.0/3.0 * ((ci_energies[i] - ci_energies[0]) / toev) * (tdms[triplet][i,0]**2 + tdms[triplet][i,1]**2 + tdms[triplet][i,2]**2)  # Calculating Oscillator Strength with Triplet Ground state
-        osc1_shift = 2.0/3.0 * ((ci_energies[i] - ci_energies[0]) / toev) * (tdms[singlet][i,0]**2 + tdms[singlet][i,1]**2 + tdms[singlet][i,2]**2)  # Calculating Oscillator Strength with Singlet Ground state
         osc_array3[i] = osc3
         osc_array1[i] = osc1
         s2_array[i] = spin
@@ -4623,10 +4619,8 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
         #strng3 = strng3 + broaden(20.0,osc3,ci_energies[i]-ci_energies[triplet])
         strng3 = strng3 + broaden(FWHM,osc3,ci_energies[i]-ci_energies[triplet])
         strng1 = strng1 + broaden(FWHM,osc1,ci_energies[i]-ci_energies[singlet])
-        strng3_shift = strng3_shift + broaden(FWHM,osc3,ci_energies[i]-ci_energies[0])
-        strng1_shift = strng1_shift + broaden(FWHM,osc1,ci_energies[i]-ci_energies[0])
     
-    return (strng3, strng1, strng3_shift, strng1_shift), (osc_array3, osc_array1), s2_array
+    return (strng3, strng1), (osc_array3, osc_array1), s2_array
 
 
 def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
@@ -4929,7 +4923,7 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         
         # Print information about CI states
         strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type=ci_type, csf_tol=0.05)
-        strngs = (strngs[0][1:], strngs[1][1:], strngs[2][1:], strngs[3][1:])
+        strngs = (strngs[0][1:], strngs[1][1:])
     return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
 
 
