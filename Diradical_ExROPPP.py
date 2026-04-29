@@ -803,7 +803,7 @@ def delocalise_somos(orbs, i, j):
 
 
 #Main HF function
-def main_scf(file, params, maxcycles=5000, d_tol=5e-15):
+def main_scf(file, params, maxcycles=5000, d_tol=1e-15):
     '''
     Main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
     For molecules that struggle to converge, a level shift can be applied...
@@ -965,1238 +965,6 @@ def transform(two_body, hf_orbs):
     return two_body_mo
 
 
-
-def cis_ham_rot(ndocc, energy0, orb_energies, rep_tens):
-    '''
-    Form the CIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
-    Note that the basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, making the Hamiltonian block diagonal.
-    
-    Args:
-        ndocc (int): Number of doubly occupied orbitals.
-        energy0 (float): Ground state HF energy.
-        orb_energies (array): HF orbital energies.
-        rep_tens (array): 4D tensor giving two-electron repulsion integrals in the MO basis.
-    Returns:
-    '''
-    SOMO1 = ndocc # Index of SOMO1
-    SOMO2 = ndocc + 1 # Index of SOMO2
-    nstates = 8 * ndocc + 4 # Ignoring HOMO to LUMO (double) excitations for the time being
-    cish = np.zeros((nstates,nstates))
-    
-    ################# SINGLET BLOCK ######################
-    #1 <OS1|H|OS1>
-    cish[0,0] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + (1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #2 <OS1|H|ZW0>
-    cish[0,1] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
-    cish[1,0] = cish[0,1]
-    #3 <OS1|H|ZW0'>
-    cish[0,2] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
-    cish[2,0] = cish[0,2]
-    #4 <OS1|H|HS1> 
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[0,col] = 1.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]
-        cish[col,0] = cish[0,col]
-    #5 <OS1|H|HS2> 
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[0,col] = 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,0] = cish[0,col]
-    #6 <OS1|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,0] = cish[0,col]
-    #7 <OS1|H|SL2>
-    block_index = 3 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[0,col] = 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
-        cish[col,0] = cish[0,col]
-    #8 - 13 are triplet states so have 0 interaction.
-    
-    # 14 <ZW0|H|ZW0>
-    cish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-    #15 <ZW0|H|ZW0'>
-    cish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-    cish[2,1] = cish[1,2]
-    #16 <ZW0|H|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[1,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
-        cish[col,1] = cish[1,col]
-    #17 <ZW0|H|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[1,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
-        cish[col, 1] = cish[1,col]
-    #18 <ZW0|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[1,col] = (2 ** 0.5) * (rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1])
-        cish[col,1] = cish[1,col]
-    #19 <ZW0|H|SL2>
-    block_index = 3*ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[1,col] = (2 ** 0.5) * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,1] = cish[1,col]
-    #20 - 25 are triplet states so have 0 interaction.
-    
-    #26 <ZW0'|H|ZW0'>
-    cish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-    #27 <ZW0'|H|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[2,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,2] = cish[2,col]
-    #28 <ZW0'|H|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[2,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]) # CHECK SIGN
-        cish[col,2] = cish[2,col]
-    #29 <ZW0'|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[2,col] = (-2 ** 0.5) * rep_tens[v_orb,SOMO2,SOMO2,SOMO1]
-        cish[col,2] = cish[2,col]
-    #30 <ZW0'|H|SL2>
-    block_index = 3 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[2,col] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - rep_tens[v_orb,SOMO2,SOMO1,SOMO1]) # CHECK SIGN
-        cish[col,2] = cish[2,col]
-    #31 - 36 are triplet states so have 0 interaction.
-    
-    row_block_index = 3
-    #37 <HS1|H|HS1>
-    col_block_index = 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
-            else:    
-                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]) - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]
-            cish[col, row] = cish[row,col]
-    #38 <HS1|H|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO1, SOMO1] \
-                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
-            else:    
-                cish[row, col] = - rep_tens[o_orb1, o_orb2, SOMO1, SOMO2] - rep_tens[o_orb1, SOMO1, SOMO2, o_orb2]
-            cish[col, row] = cish[row, col]
-    #39 <HS1|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-            cish[col, row] = cish[row,col]
-    #40 <HS1|H|SL2>
-    col_block_index = 3*ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb]
-            cish[col, row] = cish[row,col]
-    # 41 - 46 are triplets so have no interaction
-    
-    row_block_index = ndocc + 3
-    #47 <HS2|H|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
-            else:    
-                cish[row, col] = 1.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb2, o_orb1, SOMO2, SOMO2]) - 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
-            cish[col, row] = cish[row,col]
-    #48 <HS2|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
-            cish[col, row] = cish[row, col]
-    #49 <HS2|H|SL2>
-    col_block_index = 3 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] - 2 * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
-            cish[col, row] = cish[row,col]
-    #50 - 55 are triplets so no interaction
-    
-    row_block_index = 2 * ndocc + 3
-    #56 <SL1|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
-            else:    
-                cish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
-            cish[col, row] = cish[row,col]
-    #57 <SL1|H|SL2>
-    col_block_index = 3 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO1, SOMO2, v_orb1]
-            else:    
-                cish[row, col] = - rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, v_orb2]
-            cish[col, row] = cish[row,col]
-    
-    #58 - 63 are all triplets so have no interaction
-    
-    row_block_index = 3 * ndocc + 3
-    #64 <SL2|H|SL2>
-    col_block_index = 3 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2]+ 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                cish[row, col] = 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2]
-            cish[col, row] = cish[row,col]
-    
-    #65 - 70 are all triplets so have no interaction
-    
-    ################# TRIPLET BLOCK ######################
-    
-    row_index = 4 * ndocc + 3
-    #71 <OS3|H|OS3>
-    cish[row_index, row_index] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - (0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #72 <OS3|H|HS1>
-    col_index = 4 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        cish[row_index, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1]
-        cish[col, row_index] = cish[row_index,col]
-    #73 <OS3|H|HS2>
-    col_index = 5 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        cish[row_index, col] = 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2]
-        cish[col, row_index] = cish[row_index,col]
-    #73 <OS3|H|SL1>
-    col_index = 6 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        v_orb = col - col_index + (SOMO2 + 1)
-        cish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO2, SOMO1] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
-        cish[col, row_index] = cish[row_index,col]
-    #73 <OS3|H|SL2>
-    col_index = 7 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        v_orb = col - col_index + (SOMO2 + 1)
-        cish[row_index, col] = - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1]
-        cish[col, row_index] = cish[row_index, col]
-    
-    row_block_index = 4 * ndocc + 4
-    #74 <HS1|H|HS1>
-    col_block_index = 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
-            else:    
-                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]) - 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
-            cish[col, row] = cish[row,col]
-    #75 <HS1|H|HS2>
-    col_block_index = 5 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO2, SOMO1, SOMO1, SOMO1] \
-                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]                                                               #CHECK RESULT, SAME AS SINGLET?
-            else:    
-                cish[row, col] = rep_tens[o_orb2, o_orb1, SOMO1, SOMO2] - rep_tens[o_orb2, SOMO1, SOMO2, o_orb1]
-            cish[col, row] = cish[row,col]
-    #76 <HS1|H|SL1>
-    col_block_index = 6 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb] # CHECK SIGN
-            cish[col, row] = cish[row,col]
-    #77 <HS1|H|SL2>
-    col_block_index = 7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb] # CHECK SIGN
-            cish[col, row] = cish[row,col]
-
-    
-    row_block_index = 5 * ndocc + 4
-    #78 <HS2|H|HS2>
-    col_block_index = 5 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
-            else:
-                cish[row, col] = rep_tens[o_orb1, o_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
-            cish[col, row] = cish[row,col]
-    #79 <HS2|H|SL1>
-    col_block_index = 6 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
-            cish[col, row] = cish[row,col]
-    #80 <HS2|H|SL2>
-    col_block_index = 7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-            cish[col, row] = cish[row,col]
-            
-    row_block_index = 6 * ndocc + 4
-    #81 <SL1|H|SL1>
-    col_block_index =  6 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
-            else:    
-                cish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
-            cish[col, row] = cish[row,col]
-    #82 <SL1|H|SL2>
-    col_block_index = 7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO1, SOMO2, v_orb1] - 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
-            else:    
-                cish[row, col] = rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, v_orb2] # CHECK SIGN
-            cish[col, row] = cish[row,col]
-    
-    row_block_index = 7 * ndocc + 4
-    #83 <SL2|H|SL2>
-    col_block_index =  7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                cish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1] \
-                                  - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2]
-            cish[col, row] = cish[row,col]
-    
-    return cish
-
-
-def xcis_ham_rot(ndocc, energy0, orb_energies, rep_tens):
-    '''
-    Form the XCIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
-    Note that the basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, making the Hamiltonian block diagonal.
-    
-    Args:
-        ndocc (int): Number of doubly occupied orbitals.
-        energy0 (float): Ground state HF energy.
-        orb_energies (array): HF orbital energies.
-        rep_tens (array): 4D tensor giving two-electron repulsion integrals in the MO basis.
-    Returns:
-    '''
-    SOMO1 = ndocc # Index of SOMO1
-    SOMO2 = ndocc + 1 # Index of SOMO2
-    nstates = 6 * ndocc ** 2 + 8 * ndocc + 4  # 6 * ndocc^2 doubles (HOMO to LUMO), 8 * ndocc singles (HOMO to SOMO and SOMO to LUMO), 4 reference configurations (OS GSs and Zwitterions)
-    xcish = np.zeros((nstates,nstates))
-    
-    ################# SINGLET BLOCK ######################
-    #1 <OS1|H|OS1>
-    xcish[0,0] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + (1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #2 <OS1|H|ZW0>
-    xcish[0,1] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
-    xcish[1,0] = xcish[0,1]
-    #3 <OS1|H|ZW0'>
-    xcish[0,2] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
-    xcish[2,0] = xcish[0,2]
-    #4 <OS1|H|HS1> 
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        xcish[0,col] = 1.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]
-        xcish[col,0] = xcish[0,col]
-    #5 <OS1|H|HS2> 
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        xcish[0,col] = 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
-        xcish[col,0] = xcish[0,col]
-    #6 <OS1|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        xcish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
-        xcish[col,0] = xcish[0,col]
-    #7 <OS1|H|SL2>
-    block_index = 3 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        xcish[0,col] = 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
-        xcish[col,0] = xcish[0,col]
-    #8 <OS1|H|HL1> = 0
-    #9 <OS1|H|HL2>
-    block_index =  ndocc ** 2 + 4 * ndocc + 3
-    for col in range(block_index, block_index + ndocc ** 2):
-        o_orb = (col - block_index) // ndocc # Increase o_orb after every ndocc cols
-        v_orb = (col - block_index) % ndocc + (SOMO2 + 1) # Increase v_orb then reset after ndocc cols
-        xcish[0,col] = np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, SOMO2, v_orb] - rep_tens[o_orb, SOMO1, SOMO1, v_orb])
-        xcish[col,0] = xcish[0,col]
-
-    
-    #10 <ZW0|H|ZW0>
-    xcish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2] + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-    #11 <ZW0|H|ZW0'>
-    xcish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-    xcish[2,1] = xcish[1,2]
-    #12 <ZW0|H|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        xcish[1,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
-        xcish[col,1] = xcish[1,col]
-    #13 <ZW0|H|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        xcish[1,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
-        xcish[col, 1] = xcish[1,col]
-    #14 <ZW0|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        xcish[1,col] = (2 ** 0.5) * (rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1])
-        xcish[col,1] = xcish[1,col]
-    #15 <ZW0|H|SL2>
-    block_index = 3 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        xcish[1,col] = (2 ** 0.5) * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
-        xcish[col,1] = xcish[1,col]
-    #16 <ZW0|H|HL1>
-    block_index = 4 * ndocc + 3
-    for col in range(block_index, block_index + ndocc ** 2):
-        o_orb = (col - block_index) // ndocc
-        v_orb = (col - block_index) % ndocc + (SOMO2 + 1)
-        xcish[1,col] = 2 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-        xcish[col,1] = xcish[1,col]
-    #17 <ZW0|H|HL2>
-    block_index = ndocc ** 2 + 4 * ndocc + 3
-    for col in range(block_index, block_index + ndocc ** 2):
-        o_orb = (col - block_index) // ndocc
-        v_orb = (col - block_index) % ndocc + (SOMO2 + 1)
-        xcish[1,col] = np.sqrt(3) * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-        xcish[col,1] = xcish[1,col]
-        
-        
-    #18 <ZW0'|H|ZW0'>
-    xcish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
-    #19 <ZW0'|H|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        xcish[2,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
-        xcish[col,2] = xcish[2,col]
-    #20 <ZW0'|H|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        xcish[2,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]) # CHECK SIGN
-        xcish[col,2] = xcish[2,col]
-    #21 <ZW0'|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        xcish[2,col] = (-2 ** 0.5) * rep_tens[v_orb,SOMO2,SOMO2,SOMO1]
-        xcish[col,2] = xcish[2,col]
-    #22 <ZW0'|H|SL2>
-    block_index = 3 * ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        v_orb = col - block_index + (SOMO2 + 1)
-        xcish[2,col] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - rep_tens[v_orb,SOMO2,SOMO1,SOMO1]) # CHECK SIGN
-        xcish[col,2] = xcish[2,col]
-    #23 <ZW0'|H|HL1>
-    block_index = 4 * ndocc + 3
-    for col in range(block_index, block_index + ndocc ** 2):
-        o_orb = (col - block_index) // ndocc
-        v_orb = (col - block_index) % ndocc + (SOMO2 + 1)
-        xcish[2,col] = 2 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
-        xcish[col,2] = xcish[1,col]
-    #24 <ZW0'|H|HL2>
-    block_index = ndocc ** 2 + 4 * ndocc + 3
-    for col in range(block_index, block_index + ndocc ** 2):
-        o_orb = (col - block_index) // ndocc
-        v_orb = (col - block_index) % ndocc + (SOMO2 + 1)
-        xcish[2,col] = - np.sqrt(3) * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
-        xcish[col,2] = xcish[1,col]
-    
-    
-    row_block_index = 3
-    #25 <HS1|H|HS1>
-    col_block_index = 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                xcish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
-            else:    
-                xcish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]) - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]
-            xcish[col, row] = xcish[row,col]
-    #26 <HS1|H|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                xcish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO1, SOMO1] \
-                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
-            else:    
-                xcish[row, col] = - rep_tens[o_orb1, o_orb2, SOMO1, SOMO2] - rep_tens[o_orb1, SOMO1, SOMO2, o_orb2]
-            xcish[col, row] = xcish[row, col]
-    #27 <HS1|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-            xcish[col, row] = xcish[row,col]
-    #28 <HS1|H|SL2>
-    col_block_index = 3 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb]
-            xcish[col, row] = xcish[row,col]
-    #29 <HS1|H|HL1>
-    col_block_index = 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb1, o_orb1, SOMO1, v_orb] + 1.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1] - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] \
-                                   - 2 * rep_tens[v_orb, o_orb1, o_orb1, SOMO1])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[v_orb, SOMO1, o_orb1, o_orb2] - 2 * rep_tens[v_orb, o_orb2, o_orb1, SOMO1])
-            xcish[col,row] = xcish[row,col]
-    #30 <HS1|H|HL2>
-    col_block_index = ndocc ** 2 + 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1] - rep_tens[v_orb, SOMO1, o_orb1, o_orb1])
-            else:
-                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[v_orb, SOMO1, o_orb1, o_orb2])
-            xcish[col,row] = xcish[row,col]
-
-    
-    row_block_index = ndocc + 3
-    #31 <HS2|H|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                xcish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
-            else:    
-                xcish[row, col] = 1.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb2, o_orb1, SOMO2, SOMO2]) - 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
-            xcish[col, row] = xcish[row,col]
-    #32 <HS2|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
-            xcish[col, row] = xcish[row, col]
-    #33 <HS2|H|SL2>
-    col_block_index = 3 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] - 2 * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
-            xcish[col, row] = xcish[row,col]
-    #34 <HS2|H|HL1>
-    col_block_index = 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2*rep_tens[v_orb,o_orb1,o_orb1,SOMO2] - rep_tens[o_orb1,o_orb1,SOMO2,v_orb] - 1.5*rep_tens[v_orb, SOMO1, SOMO1, SOMO2] + 0.5*rep_tens[v_orb,SOMO2,SOMO2,SOMO2])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb, o_orb2, o_orb1, SOMO2] - rep_tens[v_orb, SOMO2, o_orb1, o_orb2])
-            xcish[col,row] = xcish[row,col]
-    #35 <HS2|H|HL2>
-    col_block_index = ndocc ** 2 + 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2] + 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] - rep_tens[v_orb, SOMO2, o_orb1, o_orb1])
-            else:
-                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[v_orb, SOMO2, o_orb1, o_orb2])
-            xcish[col,row] = xcish[row,col]
-
-    
-    row_block_index = 2 * ndocc + 3
-    #36 <SL1|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
-            else:    
-                xcish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
-            xcish[col, row] = xcish[row,col]
-    #37 <SL1|H|SL2>
-    col_block_index = 3 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO1, SOMO2, v_orb1]
-            else:    
-                xcish[row, col] = - rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    #38 <SL1|H|HL1>
-    col_block_index = 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb,SOMO2,v_orb1,v_orb1] + 1.5*rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 2*rep_tens[o_orb,v_orb1,v_orb1,SOMO2] - 0.5*rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
-            xcish[col,row] = xcish[row,col]
-    #39 <SL1|H|HL2>
-    col_block_index = ndocc ** 2 + 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1])
-            else:
-                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    
-    
-    row_block_index = 3 * ndocc + 3
-    #40 <SL2|H|SL2>
-    col_block_index = 3 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2]+ 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                xcish[row, col] = 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2]
-            xcish[col, row] = xcish[row,col]
-    #41 <SL2|H|HL1>
-    col_block_index = 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] - rep_tens[o_orb, SOMO1, v_orb1, v_orb1] - 1.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb1, SOMO1, v_orb2, o_orb] - rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    #42 <SL2|H|HL2>
-    col_block_index = ndocc ** 2 + 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] - rep_tens[o_orb, SOMO1, v_orb1, v_orb1])
-            else:
-                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    
-    
-    row_block_index = 4 * ndocc + 3
-    #43 <HL1|H|HL1>
-    col_block_index = 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb1] - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] \
-                                 + 2 * rep_tens[o_orb1, v_orb1, v_orb1, o_orb1]
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  2 * rep_tens[o_orb1, v_orb1, v_orb1, o_orb2] - rep_tens[o_orb1, o_orb2, v_orb1, v_orb1]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] = rep_tens[v_orb1, o_orb1, o_orb1, v_orb2] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb2]
-            else:
-                xcish[row, col] = 2 * rep_tens[o_orb1, v_orb1, o_orb2, v_orb2] - rep_tens[o_orb1, o_orb2, v_orb1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    #44 <HL1|H|HL2>
-    col_block_index = ndocc ** 2 + 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = (np.sqrt(3) / 2) * (rep_tens[o_orb1,SOMO1,SOMO1,o_orb1] - rep_tens[o_orb1,SOMO2,SOMO2,o_orb1] + rep_tens[v_orb1,SOMO2,SOMO2,v_orb1] - rep_tens[v_orb1,SOMO1,SOMO1,v_orb1])
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  (np.sqrt(3) / 2) * (rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - rep_tens[o_orb1, SOMO2, SOMO2, o_orb2])
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] =  (np.sqrt(3) / 2) * (rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, SOMO1, SOMO1, v_orb2])
-            xcish[col, row] = xcish[row,col]
-    
-    row_block_index = ndocc ** 2 + 4 * ndocc + 3
-    #45 <HL2|H|HL2>
-    col_block_index = ndocc ** 2 + 4 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb1] - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] \
-                                 + rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + rep_tens[v_orb2, SOMO2, SOMO2, v_orb2]
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] = rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] + rep_tens[o_orb1, SOMO2, SOMO2, o_orb2] - rep_tens[o_orb1, o_orb2, v_orb1, v_orb1]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] = rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] + rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, o_orb1, o_orb1]
-            else:
-                xcish[row, col] = - rep_tens[o_orb1, o_orb2, v_orb1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    
-    
-    ################# TRIPLET BLOCK ######################
-    
-    row_index = 2 * ndocc ** 2 + 4 * ndocc + 3
-    #46 <OS3|H|OS3>
-    xcish[row_index, row_index] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - (0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #47 <OS3|H|HS1>
-    col_index = 2 * ndocc ** 2 + 4 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        xcish[row_index, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1]
-        xcish[col, row_index] = xcish[row_index,col]
-    #48 <OS3|H|HS2>
-    col_index = 2 * ndocc ** 2 + 5 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        xcish[row_index, col] = 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2]
-        xcish[col, row_index] = xcish[row_index,col]
-    #49 <OS3|H|SL1>
-    col_index = 2 * ndocc ** 2 + 6 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        v_orb = col - col_index + (SOMO2 + 1)
-        xcish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO2, SOMO1] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
-        xcish[col, row_index] = xcish[row_index,col]
-    #50 <OS3|H|SL2>
-    col_index = 2 * ndocc ** 2 + 7 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        v_orb = col - col_index + (SOMO2 + 1)
-        xcish[row_index, col] = - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1]
-        xcish[col, row_index] = xcish[row_index, col]
-    #51 <OS3|H|HL1> = 0
-    #52 <OS3|H|HL2>
-    col_index =  3 * ndocc ** 2 + 8 * ndocc + 4
-    for col in range(block_index, block_index + ndocc ** 2):
-        o_orb = (col - block_index) // ndocc # Increase o_orb after every ndocc cols
-        v_orb = (col - block_index) % ndocc + (SOMO2 + 1) # Increase v_orb then reset after ndocc cols
-        xcish[0,col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO1, SOMO1, v_orb] - rep_tens[o_orb, SOMO2, SOMO2, v_orb])
-        xcish[col,0] = xcish[0,col]
-    #53 <OS3|H|HL3>
-    col_index =  4 * ndocc ** 2 + 8 * ndocc + 4
-    for col in range(block_index, block_index + ndocc ** 2):
-        o_orb = (col - block_index) // ndocc # Increase o_orb after every ndocc cols
-        v_orb = (col - block_index) % ndocc + (SOMO2 + 1) # Increase v_orb then reset after ndocc cols
-        xcish[0,col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb] + rep_tens[o_orb, SOMO2, SOMO2, v_orb]
-        xcish[col,0] = xcish[0,col]
-    
-    row_block_index = 2 * ndocc ** 2 + 4 * ndocc + 4
-    #54 <HS1|H|HS1>
-    col_block_index = 2 * ndocc ** 2 + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                xcish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
-            else:    
-                xcish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]) - 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
-            xcish[col, row] = xcish[row,col]
-    #55 <HS1|H|HS2>
-    col_block_index = 2 * ndocc ** 2 + 5 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                xcish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO2, SOMO1, SOMO1, SOMO1] \
-                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]                                                               #CHECK RESULT, SAME AS SINGLET?
-            else:    
-                xcish[row, col] = rep_tens[o_orb2, o_orb1, SOMO1, SOMO2] - rep_tens[o_orb2, SOMO1, SOMO2, o_orb1]
-            xcish[col, row] = xcish[row,col]
-    #56 <HS1|H|SL1>
-    col_block_index = 2 * ndocc ** 2 + 6 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb] # CHECK SIGN
-            xcish[col, row] = xcish[row,col]
-    #57 <HS1|H|SL2>
-    col_block_index = 2 * ndocc ** 2 + 7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb] # CHECK SIGN
-            xcish[col, row] = xcish[row,col]
-    #58 <HS1|H|HL1>
-    col_block_index = 2 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb, o_orb1, o_orb1, SOMO1] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1] + 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] \
-                                   - rep_tens[o_orb1, o_orb1, SOMO1, v_orb])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb, o_orb2, o_orb1, SOMO1] - rep_tens[v_orb, SOMO1, o_orb1, o_orb2])
-            xcish[col,row] = xcish[row,col]
-    #59 <HS1|H|HL2>
-    col_block_index = 3 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 1.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1] - rep_tens[v_orb, SOMO1, o_orb1, o_orb1])
-            else:
-                xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[v_orb, SOMO1, o_orb1, o_orb2])
-            xcish[col,row] = xcish[row,col]
-    #60 <HS1|H|HL3>
-    col_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1] - rep_tens[v_orb, SOMO1, o_orb1, o_orb1]
-            else:
-                xcish[row, col] = - rep_tens[v_orb, SOMO1, o_orb1, o_orb2]
-            xcish[col,row] = xcish[row,col]
-
-    
-    row_block_index = 2 * ndocc ** 2 + 5 * ndocc + 4
-    #61 <HS2|H|HS2>
-    col_block_index = 2 * ndocc ** 2 + 5 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-
-                xcish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
-            else:
-                xcish[row, col] = rep_tens[o_orb1, o_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
-            xcish[col, row] = xcish[row,col]
-    #62 <HS2|H|SL1>
-    col_block_index = 2 * ndocc ** 2 + 6 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
-            xcish[col, row] = xcish[row,col]
-    #63 <HS2|H|SL2>
-    col_block_index = 2 * ndocc ** 2 + 7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-            xcish[col, row] = xcish[row,col]
-    #64 <HS2|H|HL1>
-    col_block_index = 2 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb, o_orb1, o_orb1, SOMO2] + 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2] \
-                                   - rep_tens[o_orb1, o_orb1, SOMO2, v_orb])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb, o_orb2, o_orb1, SOMO2] - rep_tens[v_orb, SOMO2, o_orb1, o_orb2])
-            xcish[col,row] = xcish[row,col]
-    #65 <HS2|H|HL2>
-    col_block_index = 3 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (1.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] + rep_tens[v_orb, SOMO2, o_orb1, o_orb1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[v_orb, SOMO2, o_orb1, o_orb2])
-            xcish[col,row] = xcish[row,col]
-    #66 <HS2|H|HL3>
-    col_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                xcish[row, col] = 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2] + 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] - rep_tens[v_orb, SOMO2, o_orb1, o_orb1]
-            else:
-                xcish[row, col] = - rep_tens[v_orb, SOMO2, o_orb1, o_orb2]
-            xcish[col,row] = xcish[row,col]
-    
-            
-    row_block_index = 2 * ndocc ** 2 + 6 * ndocc + 4
-    #67 <SL1|H|SL1>
-    col_block_index =  2 * ndocc ** 2 + 6 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
-            else:    
-                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    #68 <SL1|H|SL2>
-    col_block_index = 2 * ndocc ** 2 + 7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO1, SOMO2, v_orb1] - 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
-            else:    
-                xcish[row, col] = rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    #69 <SL1|H|HL1>
-    col_block_index = 2 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] - 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] \
-                                  - 2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO2])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
-            xcish[col,row] = xcish[row,col]
-    #70 <SL1|H|HL2>
-    col_block_index = 3 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] + 1.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2])
-            else:
-                xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    #71 <SL1|H|HL3>
-    col_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1]
-            else:
-                xcish[row, col] = - rep_tens[o_orb, SOMO2, v_orb1, v_orb2]
-            xcish[col,row] = xcish[row,col]
-    
-    
-    row_block_index = 2 * ndocc ** 2 + 7 * ndocc + 4
-    #72 <SL2|H|SL2>
-    col_block_index = 2 * ndocc ** 2 + 7 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + ndocc):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1] \
-                                  - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2]
-            xcish[col, row] = xcish[row,col]
-    #73 <SL2|H|HL1>
-    col_block_index = 2 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] \
-                                  - rep_tens[o_orb, SOMO1, v_orb1, v_orb1])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb1, SOMO1, v_orb2, o_orb] - rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    #74 <SL2|H|HL2>
-    col_block_index = 3 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb1] + 1.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] - 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1])
-            else:
-                xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    #75 <SL2|H|HL3>
-    col_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = rep_tens[o_orb, SOMO1, v_orb1, v_orb1] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] - 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1]
-            else:
-                xcish[row, col] = rep_tens[o_orb, SOMO1, v_orb1, v_orb2]
-            xcish[col,row] = xcish[row,col]
-    
-    
-    row_block_index = 2 * ndocc ** 2 + 8 * ndocc + 4
-    #76 <HL1|H|HL1>
-    col_block_index = 2 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb1] - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] \
-                                 + 2 * rep_tens[o_orb1, v_orb1, v_orb1, o_orb1]
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  2 * rep_tens[o_orb1, v_orb1, v_orb1, o_orb2] - rep_tens[o_orb1, o_orb2, v_orb1, v_orb1]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] = rep_tens[v_orb1, o_orb1, o_orb1, v_orb2] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb2]
-            else:
-                xcish[row, col] = 2 * rep_tens[o_orb1, v_orb1, o_orb2, v_orb2] - rep_tens[o_orb1, o_orb2, v_orb1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    #77 <HL1|H|HL2>
-    col_block_index = 3 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = 0.5 * (rep_tens[o_orb1,SOMO2,SOMO2,o_orb1] - rep_tens[o_orb1,SOMO1,SOMO1,o_orb1] + rep_tens[v_orb1,SOMO1,SOMO1,v_orb1] - rep_tens[v_orb1,SOMO2,SOMO2,v_orb1])
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  0.5 * (rep_tens[o_orb1, SOMO2, SOMO2, o_orb2] - rep_tens[o_orb1, SOMO1, SOMO1, o_orb2])
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] =  0.5 * (rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, SOMO2, SOMO2, v_orb2])
-            xcish[col, row] = xcish[row,col]
-    #78 <HL1|H|HL3>
-    col_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[v_orb1,SOMO1,SOMO1,v_orb1] + rep_tens[v_orb1,SOMO2,SOMO2,v_orb1] - rep_tens[o_orb1,SOMO1,SOMO1,o_orb1] - rep_tens[o_orb1,SOMO2,SOMO2,o_orb1])
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  - (1 / np.sqrt(2)) * (rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] + rep_tens[o_orb1, SOMO2, SOMO2, o_orb2])
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] =  (1 / np.sqrt(2)) * (rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] + rep_tens[v_orb1, SOMO2, SOMO2, v_orb2])
-            xcish[col, row] = xcish[row,col]
-    
-    
-    row_block_index = 3 * ndocc ** 2 + 8 * ndocc + 4
-    #79 <HL2|H|HL2>
-    col_block_index = 3 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb1] - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  - rep_tens[o_orb1, o_orb2, v_orb1, v_orb1]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] = - rep_tens[v_orb1, o_orb1, o_orb1, v_orb2] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb2]
-            else:
-                xcish[row, col] = - rep_tens[o_orb1, o_orb2, v_orb1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    #80 <HL2|H|HL3>
-    col_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb1,SOMO1,SOMO1,o_orb1] - rep_tens[o_orb1,SOMO2,SOMO2,o_orb1] + rep_tens[v_orb1,SOMO1,SOMO1,v_orb1] - rep_tens[v_orb1,SOMO2,SOMO2,v_orb1])
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  (1 / np.sqrt(2)) * (rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - rep_tens[o_orb1, SOMO2, SOMO2, o_orb2])
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] =  (1 / np.sqrt(2)) * (rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, SOMO2, SOMO2, v_orb2])
-            xcish[col, row] = xcish[row,col]
-    
-    row_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    #81 <HL2|H|HL2>
-    col_block_index = 4 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb1] - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] \
-                                  + 0.5 * (rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + rep_tens[v_orb1, SOMO2, SOMO2, v_orb1])
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2] - rep_tens[o_orb1, o_orb2, v_orb1, v_orb1]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] = 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, o_orb1, o_orb1]
-            else:
-                xcish[row, col] = - rep_tens[o_orb1, o_orb2, v_orb1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    
-            
-    ################# QUINTET STATE ##################
-    
-    row_block_index = 5 * ndocc ** 2 + 8 * ndocc + 4
-    #82 <5Q|H|5Q>
-    col_block_index =  5 * ndocc ** 2 + 8 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc ** 2):
-        o_orb1 = (row - row_block_index) // ndocc # Increase o_orb after every ndocc rows
-        v_orb1 = (row - row_block_index) % ndocc + (SOMO2 + 1) # Increase v_orb for every column and reset after ndocc rows
-        for col in range(col_block_index, col_block_index + ndocc ** 2):
-            o_orb2 = (col - col_block_index) // ndocc
-            v_orb2 = (col - col_block_index) % ndocc + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, v_orb1, v_orb1] - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] \
-                                 - 0.5 * (rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + rep_tens[v_orb1, SOMO2, SOMO2, v_orb1])
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                xcish[row, col] =  - rep_tens[o_orb1, o_orb2, v_orb1, v_orb1] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                xcish[row, col] = - rep_tens[v_orb1, v_orb2, o_orb1, o_orb1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
-            else:
-                xcish[row, col] = - rep_tens[o_orb1, o_orb2, v_orb1, v_orb2]
-            xcish[col, row] = xcish[row,col]
-    
-    
-    return xcish
-
-
     
 def broaden(FWHM,osc,energy):
     if brdn_typ == 'wavelength' and line_typ == 'lorentzian':
@@ -2230,3079 +998,6 @@ def write_gnu(strng,file):
 
 
 
-def dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
-    '''
-    Routine to calculate the one electron dipole moment matrix (x, y and z) in the basis of orbitals, 
-    and then the dipole moment matrix in the basis of csfs.
-    
-    '''
-    natoms = coords.shape[0]
-    print("Calculating dipole moments ...\n")
-    dip1el = cartesian_operators(coords,hf_orbs)[0]
-    SOMO1 = ndocc
-    SOMO2 = ndocc + 1
-    nvirt = norbs - ndocc - 2
-
-    # print("x norm= %f"%linalg.norm(dip1el[:,:,0] - dip1el[:,:,0].T))  # checking symmetric
-    # print("y norm= %f"%linalg.norm(dip1el[:,:,1] - dip1el[:,:,1].T))
-    # print("z norm= %f"%linalg.norm(dip1el[:,:,2] - dip1el[:,:,2].T))
-    # print(" ")
-    dipoles = np.zeros((nstates,nstates,3)) 
-    
-    #1 <OS1|mu|OS1>
-    for o in range(ndocc):
-        dipoles[0,0,:] -= 2*dip1el[o,o,:]
-    dipoles[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
-    #2 <OS1|mu|ZW0> 
-    dipoles[0,1,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
-    dipoles[1,0,:] = dipoles[0,1,:] 
-    #3 <OS1|mu|ZW0'> 
-    dipoles[0,2,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
-    dipoles[2,0,:] = dipoles[0,1,:] 
-    #4 <OS1|mu|HS1> 
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[0,col,:] = dip1el[o_orb, SOMO1, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #5 <OS1|mu|HS2> 
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[0,col,:] = - dip1el[o_orb, SOMO2, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #6 <OS1|mu|SL1> 
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[0,col,:] = dip1el[v_orb, SOMO2, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #7 <OS1|mu|SL2> 
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[0,col,:] = -dip1el[v_orb, SOMO1, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    
-    #8 <ZW0|mu|ZW0>
-    for o in range(ndocc + 1):
-        dipoles[1,1,:] -= 2*dip1el[o,o,:]
-    #9 <ZW0|mu|ZW0'> = 0
-    #10 <ZW0|mu|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[1,col,:] = (-2 ** 0.5) * dip1el[o_orb, SOMO2, :]
-        dipoles[col,1,:] = dipoles[1,col,:]
-    #11 <ZW0|mu|HS2> = 0
-    #12 <ZW0|mu|SL1> 
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[1,col,:] = (2 ** 0.5) * dip1el[v_orb, SOMO1, :]
-        dipoles[col,1,:] = dipoles[1,col,:]
-    #13 <ZW0|mu|SL2> = 0 
-    
-    #14 <ZW0'|mu|ZW0'>
-    for o in range(ndocc):
-        dipoles[2,2,:] -= 2*dip1el[o,o,:]
-    dipoles[2,2,:] -= 2 * dip1el[SOMO2,SOMO2,:]
-    #15 <ZW0'|mu|HS1> = 0
-    #16 <ZW0'|mu|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[2,col,:] = (2 ** 0.5) * dip1el[o_orb, SOMO1, :]
-        dipoles[col,2,:] = dipoles[2,col,:]
-    #17 <ZW0'|mu|SL1> = 0
-    #18 <ZW0'|mu|SL2>
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[2,col,:] = (- 2 ** 0.5) * dip1el[v_orb, SOMO2, :]
-        dipoles[col,2,:] = dipoles[2,col,:]
-    
-    row_block_index = 3
-    #19 <HS1|mu|HS1>
-    col_block_index = 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
-            dipoles[col,row,:] = dipoles[row,col,:] 
-    #20 <HS1|mu|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        dipoles[row,row,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
-    #21 <HS1|mu|SL1> = 0
-    #22 <HS1|mu|SL2> = 0
-
-    row_block_index = ndocc + 3
-    #23 <HS2|mu|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #24 <HS2|mu|SL1> = 0
-    #25 <HS2|mu|SL2> = 0
-
-    row_block_index = 2 * ndocc + 3
-    #26 <SL1|mu|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #27 <SL1|mu|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        dipoles[row,row,:] = dip1el[SOMO1,SOMO2,:]
-
-    row_block_index = nvirt + 2 * ndocc + 3
-    #28 <SL2|mu|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-
-################# TRIPLET BLOCK ######################
-
-    row_index = 2 * nvirt + 2 * ndocc + 3
-    #29 <OS3|mu|OS3>
-    for o in range(ndocc):
-        dipoles[row_index,row_index,:] -= 2*dip1el[o,o,:]
-    dipoles[row_index,row_index,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
-    #30 <OS3|mu|HS1>
-    col_index = 2 * nvirt + 2 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO1,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #31 <OS3|mu|HS2>
-    col_index = 2 * nvirt + 3 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO2,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #32 <OS3|mu|SL1>
-    col_index = 2 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        dipoles[row_index,col,:] = dip1el[v_orb,SOMO2,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #33 <OS3|mu|SL2>
-    col_index = 3 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        dipoles[row_index,col,:] = -dip1el[v_orb,SOMO1,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-        
-    row_block_index = 2 * nvirt + 2 * ndocc + 4
-    #34 <HS1|H|HS1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
-            dipoles[col,row,:] = dipoles[row,col,:] 
-    #35 <HS1|mu|HS2>
-    col_block_index = 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        dipoles[row,row,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
-    #36 <HS1|mu|SL1> = 0
-    #37 <HS1|mu|SL2> = 0
-
-    row_block_index = 2 * nvirt + 3 * ndocc + 4
-    #38 <HS2|mu|HS2>
-    col_block_index = 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #39 <HS2|mu|SL1> = 0
-    #40 <HS2|mu|SL2> = 0
-
-    row_block_index = 2 * nvirt + 4 * ndocc + 4
-    #41 <SL1|mu|SL1>
-    col_block_index = 2 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #42 <SL1|mu|SL2>
-    col_block_index = 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        dipoles[row,row,:] = -dip1el[SOMO1,SOMO2,:]
-    
-    row_block_index = 3 * nvirt + 4 * ndocc + 4
-    #43 <SL2|H|SL2>
-    col_block_index = 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-        
-    #print("%10.5f"%linalg.norm(dipoles[:,:,0] - dipoles[:,:,0].T))  # checking symmetric
-    #print("%10.5f"%linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
-    #print("%10.5f"%linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))   
-
-    OS1_perm_dip=dipoles[0,0,:]
-    ZW0_perm_dip=dipoles[1,1,:]
-    ZW0p_perm_dip=dipoles[2,2,:]
-    OS3_perm_dip=dipoles[2 * nvirt + 2 * ndocc + 3, 2 * nvirt + 2 * ndocc + 3, :]
-    for dipole in [OS1_perm_dip, ZW0_perm_dip, ZW0p_perm_dip, OS3_perm_dip]:
-        for i in range(natoms):
-            atom_z=0
-            if atoms[i][0] in ['C','c','n1','N1']:
-                atom_z=1
-            elif atoms[i][0] in ['Cl','cl','CL','N2','n2']:
-                atom_z=2   
-            # for x in range(3):
-            #     perm_dip[x]+=atom_z*coords[i,x]*tobohr
-            dipole[:]+=atom_z*coords[i,:]*tobohr
-    print(f"Permanent dipole moment of reference states:\n \
-            Open-Shell Singlet (|OS1>) = {OS1_perm_dip[0]:.3f} x {OS1_perm_dip[1]:.3f} y {OS1_perm_dip[2]:.3f} z\n \
-            Zwitterion 0 (|ZW0>) = {ZW0_perm_dip[0]:.3f} x {ZW0_perm_dip[1]:.3f} y {ZW0_perm_dip[2]:.3f} z\n \
-            Zwitterion 0' (|ZW0'>) = {ZW0p_perm_dip[0]:.3f} x {ZW0p_perm_dip[1]:.3f} y {ZW0p_perm_dip[2]:.3f} z\n \
-            Open-Shell Triplet (|OS3>) = {OS3_perm_dip[0]:.3f} x {OS3_perm_dip[1]:.3f} y {OS3_perm_dip[2]:.3f} z\n")
-    return dipoles
-
-def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
-    '''
-    Routine to calculate the one electron dipole moment matrix (x, y and z) in the basis of orbitals, 
-    and then the dipole moment matrix in the basis of csfs.
-    
-    '''
-    natoms = coords.shape[0]
-    print("Calculating dipole moments ...\n")
-    dip1el = cartesian_operators(coords,hf_orbs)[0]
-    SOMO1 = ndocc
-    SOMO2 = ndocc + 1
-    nvirt = norbs - ndocc - 2
-
-   # print("x norm= %f"%linalg.norm(dip1el[:,:,0] - dip1el[:,:,0].T))  # checking symmetric
-   # print("y norm= %f"%linalg.norm(dip1el[:,:,1] - dip1el[:,:,1].T))
-   # print("z norm= %f"%linalg.norm(dip1el[:,:,2] - dip1el[:,:,2].T))
-   # print(" ")
-    dipoles = np.zeros((nstates,nstates,3)) 
-
-    #1 <OS1|mu|OS1>
-    for o in range(ndocc):
-        dipoles[0,0,:] -= 2*dip1el[o,o,:]
-    dipoles[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
-    #2 <OS1|mu|ZW0> 
-    dipoles[0,1,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
-    dipoles[1,0,:] = dipoles[0,1,:] 
-    #3 <OS1|mu|ZW0'> 
-    dipoles[0,2,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
-    dipoles[2,0,:] = dipoles[0,2,:] 
-    #4 <OS1|mu|HS1> 
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[0,col,:] = dip1el[o_orb, SOMO1, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #5 <OS1|mu|HS2> 
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[0,col,:] = - dip1el[o_orb, SOMO2, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #6 <OS1|mu|SL1> 
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[0,col,:] = dip1el[v_orb, SOMO2, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #7 <OS1|mu|SL2> 
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[0,col,:] = -dip1el[v_orb, SOMO1, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #8 <OS1|mu|HL1>
-    block_index = 2 * nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + (ndocc * nvirt)):
-        o_orb = (col - block_index) // nvirt # Increase o_orb after every ndocc cols
-        v_orb = (col - block_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
-        dipoles[0,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #9 <OS1|mu|HL2>=0
-    
-    
-    #10 <ZW0|mu|ZW0>
-    for o in range(ndocc + 1):
-        dipoles[1,1,:] -= 2*dip1el[o,o,:]
-    #11 <ZW0|mu|ZW0'> = 0
-    #12 <ZW0|mu|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[1,col,:] = (-2 ** 0.5) * dip1el[o_orb, SOMO2, :]
-        dipoles[col,1,:] = dipoles[1,col,:]
-    #13 <ZW0|mu|HS2> = 0
-    #14 <ZW0|mu|SL1> 
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[1,col,:] = (2 ** 0.5) * dip1el[v_orb, SOMO1, :]
-        dipoles[col,1,:] = dipoles[1,col,:]
-    #15 <ZW0|mu|SL2> = 0
-    #16 <ZW0|mu|HL1> = 0
-    #17 <ZW0|mu|HL2> = 0
-    
-    
-    #18 <ZW0'|mu|ZW0'>
-    for o in range(ndocc):
-        dipoles[2,2,:] -= 2*dip1el[o,o,:]
-    dipoles[2,2,:] -= 2 * dip1el[SOMO2,SOMO2,:]
-    #19 <ZW0'|mu|HS1> = 0
-    #20 <ZW0'|mu|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[2,col,:] = (2 ** 0.5) * dip1el[o_orb, SOMO1, :]
-        dipoles[col,2,:] = dipoles[2,col,:]
-    #21 <ZW0'|mu|SL1> = 0
-    #22 <ZW0'|mu|SL2>
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[2,col,:] = (- 2 ** 0.5) * dip1el[v_orb, SOMO2, :]
-        dipoles[col,2,:] = dipoles[2,col,:]
-    #23 <ZW0'|mu|HL1> = 0
-    #24 <ZW0'|mu|HL2> = 0
-    
-    
-    row_block_index = 3
-    #25 <HS1|mu|HS1>
-    col_block_index = 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
-            dipoles[col,row,:] = dipoles[row,col,:] 
-    #26 <HS1|mu|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
-                dipoles[col,row,:] = dipoles[row,col, :]
-    #27 <HS1|mu|SL1> = 0
-    #28 <HS1|mu|SL2> = 0
-    #29 <HS1|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #30 <HS1|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-
-
-    row_block_index = ndocc + 3
-    #31 <HS2|mu|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #32 <HS2|mu|SL1> = 0
-    #33 <HS2|mu|SL2> = 0
-    #34 <HS2|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #35 <HS2|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-
-
-    row_block_index = 2 * ndocc + 3
-    #36 <SL1|mu|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #37 <SL1|mu|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row,col,:] = dip1el[SOMO1,SOMO2,:]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #38 <SL1|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #39 <SL1|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-
-
-    row_block_index = nvirt + 2 * ndocc + 3
-    #40 <SL2|mu|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #41 <SL2|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #42 <SL2|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    
-    
-    row_block_index = 2 * nvirt + 2 * ndocc + 3
-    #43 <HL1|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #44 <HL1|mu|HL2> = 0
-
-
-    row_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    #43 <HL2|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    
-    
-    
-
-################# TRIPLET BLOCK ######################
-
-    row_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    #46 <OS3|mu|OS3>
-    for o in range(ndocc):
-        dipoles[row_index,row_index,:] -= 2*dip1el[o,o,:]
-    dipoles[row_index,row_index,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
-    #47 <OS3|mu|HS1>
-    col_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO1,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #48 <OS3|mu|HS2>
-    col_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO2,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #49 <OS3|mu|SL1>
-    col_index = 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        dipoles[row_index,col,:] = dip1el[v_orb,SOMO2,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #50 <OS3|mu|SL2>
-    col_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        dipoles[row_index,col,:] = -dip1el[v_orb,SOMO1,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #51 <OS3|mu|HL1>
-    col_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + (ndocc * nvirt)):
-        o_orb = (col - col_index) // nvirt # Increase o_orb after every nvirt cols
-        v_orb = (col - col_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
-        dipoles[row_index,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #52 <OS3|mu|HL2> = 0
-    #53 <OS3|mu|HL3> = 0
-    
-
-    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
-    #54 <HS1|H|HS1>
-    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
-            dipoles[col,row,:] = dipoles[row,col,:] 
-    #55 <HS1|mu|HS2>
-    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #56 <HS1|mu|SL1> = 0
-    #57 <HS1|mu|SL2> = 0
-    #58 <HS1|mu|HL1>
-    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #59 <HS1|mu|HL2>
-    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #60 <HS1|mu|HL3>
-    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-
-
-    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    #61 <HS2|mu|HS2>
-    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #62 <HS2|mu|SL1> = 0
-    #63 <HS2|mu|SL2> = 0
-    #64 <HS2|mu|HL1>
-    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #65 <HS2|mu|HL2>
-    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #65 <HS2|mu|HL3>
-    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-
-
-    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
-    #66 <SL1|mu|SL1>
-    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #67 <SL1|mu|SL2>
-    col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row,col,:] = -dip1el[SOMO1,SOMO2,:]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #68 <SL1|mu|HL1>
-    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #69 <SL1|mu|HL2>
-    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #70 <SL1|mu|HL3>
-    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    
-    
-    row_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    #71 <SL2|H|SL2>
-    col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #72 <SL2|mu|HL1>
-    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #73 <SL2|mu|HL2>
-    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #74 <SL2|mu|HL3>
-    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    
-    
-    row_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #75 <HL1|mu|HL1>
-    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #76 <HL1|mu|HL2> = 0
-    #77 <HL1|mu|HL3> = 0
-    
-    
-    row_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #78 <HL2|mu|HL2>
-    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #79 <HL2|mu|HL3> = 0
-
-
-    row_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #80 <HL3|mu|HL3>
-    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    
-    
-    row_block_index = 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #81 <DQ|mu|DQ>
-    col_block_index = 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-        
-    #print("%10.5f"%linalg.norm(dipoles[:,:,0] - dipoles[:,:,0].T))  # checking symmetric
-    #print("%10.5f"%linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
-    #print("%10.5f"%linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))   
-
-    OS1_perm_dip=dipoles[0,0,:]
-    ZW0_perm_dip=dipoles[1,1,:]
-    ZW0p_perm_dip=dipoles[2,2,:]
-    OS3_perm_dip=dipoles[2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3,2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3,:]
-    for dipole in [OS1_perm_dip, ZW0_perm_dip, ZW0p_perm_dip, OS3_perm_dip]:
-        for i in range(natoms):
-            atom_z=0
-            if atoms[i][0] in ['C','c','n1','N1']:
-                atom_z=1
-            elif atoms[i][0] in ['Cl','cl','CL','N2','n2']:
-                atom_z=2   
-            # for x in range(3):
-            #     perm_dip[x]+=atom_z*coords[i,x]*tobohr
-            dipole[:]+=atom_z*coords[i,:]*tobohr
-    print(f"Permanent dipole moment of reference states:\n \
-            Open-Shell Singlet (|OS1>) = {OS1_perm_dip[0]:.3f} x {OS1_perm_dip[1]:.3f} y {OS1_perm_dip[2]:.3f} z\n \
-            Zwitterion 0 (|ZW0>) = {ZW0_perm_dip[0]:.3f} x {ZW0_perm_dip[1]:.3f} y {ZW0_perm_dip[2]:.3f} z\n \
-            Zwitterion 0' (|ZW0'>) = {ZW0p_perm_dip[0]:.3f} x {ZW0p_perm_dip[1]:.3f} y {ZW0p_perm_dip[2]:.3f} z\n \
-            Open-Shell Triplet (|OS3>) = {OS3_perm_dip[0]:.3f} x {OS3_perm_dip[1]:.3f} y {OS3_perm_dip[2]:.3f} z\n")
-    return dipoles
-
-def dipole_xcisd(coords,atoms,norbs,hf_orbs,ndocc,nstates):
-    '''
-    Routine to calculate the one electron dipole moment matrix (x, y and z) in the basis of orbitals, 
-    and then the dipole moment matrix in the basis of csfs.
-    
-    '''
-    natoms = coords.shape[0]
-    print("Calculating dipole moments ...\n")
-    dip1el = cartesian_operators(coords,hf_orbs)[0]
-    SOMO1 = ndocc # Index of SOMO1
-    SOMO2 = ndocc + 1 # Index of SOMO2
-    nvirt = norbs - ndocc - 2 # Number of virtual orbitals
-    ndoc3 = int((ndocc ** 2 - ndocc) / 2) # Number of doubly excited occupied to core triplet CSFs
-    ndoc1 = int((ndocc ** 2 + ndocc) / 2) # Number of doubly excited occupied to core singlet CSFs
-    ndcv3 = int((nvirt ** 2 - nvirt) / 2) # Number of doubly excited occupied to core triplet CSFs
-    ndcv1 = int((nvirt ** 2 + nvirt) / 2) # Number of doubly excited occupied to core singlet CSFs
-    nstates = nvirt ** 2 + ndocc ** 2 + 6 * (ndocc * nvirt) + 4 * ndocc + 4 * nvirt + 4  # nvirt ** 2 doubles (SOMO to LUMO), ndocc ** 2 doubles (HOMO to SOMO), 6 * ndocc * nvirt doubles (HOMO to LUMO), 4 * ndocc singles (HOMO to SOMO), 4 * nvirt singles (SOMO to LUMO)
-                                                                                         # and 4 reference configurations (OS GSs and Zwitterions)
-
-   # print("x norm= %f"%linalg.norm(dip1el[:,:,0] - dip1el[:,:,0].T))  # checking symmetric
-   # print("y norm= %f"%linalg.norm(dip1el[:,:,1] - dip1el[:,:,1].T))
-   # print("z norm= %f"%linalg.norm(dip1el[:,:,2] - dip1el[:,:,2].T))
-   # print(" ")
-    dipoles = np.zeros((nstates,nstates,3)) 
-
-    #1 <OS1|mu|OS1>
-    for o in range(ndocc):
-        dipoles[0,0,:] -= 2*dip1el[o,o,:]
-    dipoles[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
-    #2 <OS1|mu|ZW0> 
-    dipoles[0,1,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
-    dipoles[1,0,:] = dipoles[0,1,:] 
-    #3 <OS1|mu|ZW0'> 
-    dipoles[0,2,:] = (-2 ** 0.5) * dip1el[SOMO1,SOMO2,:]
-    dipoles[2,0,:] = dipoles[0,2,:] 
-    #4 <OS1|mu|HS1> 
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[0,col,:] = dip1el[o_orb, SOMO1, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #5 <OS1|mu|HS2> 
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[0,col,:] = - dip1el[o_orb, SOMO2, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #6 <OS1|mu|SL1> 
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[0,col,:] = dip1el[v_orb, SOMO2, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #7 <OS1|mu|SL2> 
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[0,col,:] = -dip1el[v_orb, SOMO1, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #8 <OS1|mu|HL1>
-    block_index = 2 * nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + (ndocc * nvirt)):
-        o_orb = (col - block_index) // nvirt # Increase o_orb after every ndocc cols
-        v_orb = (col - block_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
-        dipoles[0,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
-        dipoles[col,0,:] = dipoles[0,col,:]
-    #9 <OS1|mu|HL2>=0
-    #9 <OS1|mu|1^HSD>=0
-    # <OS1|mu|1^SLD>=0
-    
-    
-    #10 <ZW0|mu|ZW0>
-    for o in range(ndocc + 1):
-        dipoles[1,1,:] -= 2*dip1el[o,o,:]
-    #11 <ZW0|mu|ZW0'> = 0
-    #12 <ZW0|mu|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[1,col,:] = (-2 ** 0.5) * dip1el[o_orb, SOMO2, :]
-        dipoles[col,1,:] = dipoles[1,col,:]
-    #13 <ZW0|mu|HS2> = 0
-    #14 <ZW0|mu|SL1> 
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[1,col,:] = (2 ** 0.5) * dip1el[v_orb, SOMO1, :]
-        dipoles[col,1,:] = dipoles[1,col,:]
-    #15 <ZW0|mu|SL2> = 0
-    #16 <ZW0|mu|HL1> = 0
-    #17 <ZW0|mu|HL2> = 0
-    #17 <ZW0|mu|1^HSD>=0
-    # <ZW0|mu|1^SLD>=0
-    
-    
-    #18 <ZW0'|mu|ZW0'>
-    for o in range(ndocc):
-        dipoles[2,2,:] -= 2*dip1el[o,o,:]
-    dipoles[2,2,:] -= 2 * dip1el[SOMO2,SOMO2,:]
-    #19 <ZW0'|mu|HS1> = 0
-    #20 <ZW0'|mu|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        dipoles[2,col,:] = (2 ** 0.5) * dip1el[o_orb, SOMO1, :]
-        dipoles[col,2,:] = dipoles[2,col,:]
-    #21 <ZW0'|mu|SL1> = 0
-    #22 <ZW0'|mu|SL2>
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        dipoles[2,col,:] = (- 2 ** 0.5) * dip1el[v_orb, SOMO2, :]
-        dipoles[col,2,:] = dipoles[2,col,:]
-    #23 <ZW0'|mu|HL1> = 0
-    #24 <ZW0'|mu|HL2> = 0
-    #24 <ZW0'|mu|1^HSD>=0
-    # <ZW0'|mu|1^SLD>=0
-    
-    
-    row_block_index = 3
-    #25 <HS1|mu|HS1>
-    col_block_index = 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
-            dipoles[col,row,:] = dipoles[row,col,:] 
-    #26 <HS1|mu|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-             o_orb2 = col - col_block_index
-             if o_orb1 == o_orb2:
-                 dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
-                 dipoles[col,row,:] = dipoles[row,col, :]
-    #27 <HS1|mu|SL1> = 0
-    #28 <HS1|mu|SL2> = 0
-    #29 <HS1|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #30 <HS1|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #30 <HS1|mu|1^HSD>
-    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        o_orb2 = 0
-        o_orb3 = 0
-        for col in range(col_block_index, col_block_index + ndoc1):
-            if o_orb1 == o_orb2:
-                if o_orb2 == o_orb3:
-                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[o_orb1, SOMO2, :]
-                else:
-                    dipoles[row, col, :] = - dip1el[o_orb3, SOMO2, :]
-            elif o_orb1 == o_orb3:
-                if o_orb2 == o_orb3:
-                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[o_orb1, SOMO2, :]
-                else:
-                    dipoles[row, col, :] = - dip1el[o_orb2, SOMO2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            o_orb3 += 1
-            if o_orb3 == ndocc:
-                o_orb2 += 1
-                o_orb3 = o_orb2
-    # <HS1|mu|1^SLD> = 0
-
-    row_block_index = ndocc + 3
-    #31 <HS2|mu|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #32 <HS2|mu|SL1> = 0
-    #33 <HS2|mu|SL2> = 0
-    #34 <HS2|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #35 <HS2|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #35 <HS2|mu|1^HSD>
-    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        o_orb2 = 0
-        o_orb3 = 0
-        for col in range(col_block_index, col_block_index + ndoc1):
-            if o_orb1 == o_orb2:
-                if o_orb2 == o_orb3:
-                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, SOMO1, :]
-                else:
-                    dipoles[row, col, :] = dip1el[o_orb3, SOMO1, :]
-            elif o_orb1 == o_orb3:
-                if o_orb2 == o_orb3:
-                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, SOMO1, :]
-                else:
-                    dipoles[row, col, :] = dip1el[o_orb2, SOMO1, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            o_orb3 += 1
-            if o_orb3 == ndocc:
-                o_orb2 += 1
-                o_orb3 = o_orb2
-    # <HS2|mu|1^SLD> = 0
-
-
-    row_block_index = 2 * ndocc + 3
-    #36 <SL1|mu|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #37 <SL1|mu|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row,col,:] = dip1el[SOMO1,SOMO2,:]                 
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #38 <SL1|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #39 <SL1|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #39 <SL1|mu|HSD> = 0
-    # <SL1|mu|1^SLD> ONLY INCLUDING EXCITATIONS TO THE SAME VIRTUAL ORBITAL FOR NOW
-    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        v_orb2 = SOMO2 + 1
-        v_orb3 = SOMO2 + 1
-        for col in range(col_block_index, col_block_index + ndcv1):
-            if v_orb2 == v_orb3:
-                if v_orb1 == v_orb2:
-                    dipoles[row,col,:] = np.sqrt(2) * dip1el[v_orb1,SOMO1,:]                 
-            else:
-                if v_orb1 == v_orb2:
-                    dipoles[row,col,:] = dip1el[v_orb3,SOMO1,:] 
-                elif v_orb1 == v_orb3:
-                    dipoles[row,col,:] = dip1el[v_orb2,SOMO1,:]
-            dipoles[col,row,:] = dipoles[row,col,:]
-
-
-    row_block_index = nvirt + 2 * ndocc + 3
-    #40 <SL2|mu|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #41 <SL2|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #42 <SL2|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #42 <SL2|mu|HSD> = 0
-    # <SL2|mu|SLD> ONLY INCLUDING EXCITATIONS TO THE SAME VIRTUAL ORBITAL FOR NOW
-    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        v_orb2 = SOMO2 + 1
-        v_orb3 = SOMO2 + 1
-        for col in range(col_block_index, col_block_index + ndcv1):
-            if v_orb2 == v_orb3:
-                if v_orb1 == v_orb2:
-                    dipoles[row,col,:] = - np.sqrt(2) * dip1el[v_orb1,SOMO2,:]                 
-            else:
-                if v_orb1 == v_orb2:
-                    dipoles[row,col,:] = - dip1el[v_orb3,SOMO2,:] 
-                elif v_orb1 == v_orb3:
-                    dipoles[row,col,:] = - dip1el[v_orb2,SOMO2,:]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    
-    
-    row_block_index = 2 * nvirt + 2 * ndocc + 3
-    #43 <HL1|mu|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #44 <HL1|mu|HL2> = 0
-    #45 <HL1|mu|HSD> = 0
-    # <HL1|mu|SLD> = 0
-
-
-    row_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    #43 <HL2|mu|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    # <HL1|mu|HLD> = 0
-    # <HL1|mu|SLD> = 0
-    
-    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    #44 <1^HSD|mu|1^HSD>
-    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    o_orb1 = 0
-    o_orb2 = 0
-    for row in range(row_block_index, row_block_index + ndoc1):
-        o_orb3 = 0
-        o_orb4 = 0
-        for col in range(col_block_index, col_block_index + ndoc1):
-            if o_orb1 == o_orb2 and o_orb3 == o_orb4:
-                if o_orb1 == o_orb3:
-                    for o in range(ndocc):
-                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
-                    dipoles[row, col, :] += 2 * dip1el[o_orb1, o_orb1, :]
-                    dipoles[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
-                    dipoles[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
-            elif o_orb1 == o_orb2 and o_orb3 != o_orb4:
-                if o_orb1 == o_orb3:
-                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, o_orb4, :]
-                elif o_orb1 == o_orb4:
-                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, o_orb3, :]
-            elif o_orb3 == o_orb4 and o_orb1 != o_orb2:
-                if o_orb3 == o_orb1:
-                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb3, o_orb2, :]
-                elif o_orb3 == o_orb2:
-                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb3, o_orb1, :]
-            else:
-                if o_orb1 == o_orb3 and o_orb2 == o_orb4:
-                    for o in range(ndocc):
-                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
-                        dipoles[row, col, :] += dip1el[o_orb1, o_orb1, :]
-                        dipoles[row, col, :] += dip1el[o_orb2, o_orb2, :]
-                        dipoles[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
-                        dipoles[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
-                elif o_orb1 == o_orb3 and o_orb2 != o_orb4:
-                    dipoles[row,col,:] = dip1el[o_orb2,o_orb4,:]
-                elif o_orb2 == o_orb4 and o_orb1 != o_orb3:
-                    dipoles[row,col,:] = dip1el[o_orb1,o_orb3,:]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            o_orb4 += 1
-            if o_orb4 == ndocc:
-                o_orb3 += 1
-                o_orb4 = o_orb3
-        o_orb2 += 1
-        if o_orb2 == ndocc:
-            o_orb1 += 1
-            o_orb2 = o_orb1
-    # <HSD|mu|SLD> = 0
-    
-    # <SLD|mu|SLD>
-    row_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    v_orb1 = SOMO2 + 1
-    v_orb2 = SOMO2 + 1
-    for row in range(row_block_index, row_block_index + ndcv1):
-        v_orb3 = SOMO2 + 1
-        v_orb4 = SOMO2 + 1
-        for col in range(col_block_index, col_block_index + ndcv1):
-            if v_orb1 == v_orb2 and v_orb3 == v_orb4:
-                if v_orb1 == v_orb3:
-                    for o in range(ndocc):
-                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
-                    dipoles[row,col,:] -= 2 * dip1el[v_orb1,v_orb1,:]                 
-            elif v_orb1 == v_orb2 and v_orb3 != v_orb4:
-                if v_orb1 == v_orb3:
-                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb1, v_orb4, :]
-                elif v_orb1 == v_orb4:
-                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb1, v_orb3, :]
-            elif v_orb1 != v_orb2 and v_orb3 == v_orb4:
-                if v_orb3 == v_orb1:
-                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb3, v_orb2, :]
-                elif v_orb3 == v_orb2:
-                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb3, v_orb1, :]
-            else:
-                if v_orb1 == v_orb3 and v_orb2 == v_orb4:
-                    for o in range(ndocc):
-                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
-                    dipoles[row,col,:] -= dip1el[v_orb1,v_orb1,:] 
-                    dipoles[row,col,:] -= dip1el[v_orb2,v_orb2,:] 
-                elif v_orb1 == v_orb3 and v_orb2 != v_orb4:
-                    dipoles[row,col,:] = -dip1el[v_orb2,v_orb4,:]
-                elif v_orb1 != v_orb3 and v_orb2 == v_orb4:
-                    dipoles[row,col,:] = -dip1el[v_orb1,v_orb3,:]
-            
-            dipoles[col,row,:] = dipoles[row,col,:]
-    
-
-################# TRIPLET BLOCK ######################
-
-    row_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    #46 <OS3|mu|OS3>
-    for o in range(ndocc):
-        dipoles[row_index,row_index,:] -= 2*dip1el[o,o,:]
-    dipoles[row_index,row_index,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
-    #47 <OS3|mu|HS1>
-    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO1,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #48 <OS3|mu|HS2>
-    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO2,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #49 <OS3|mu|SL1>
-    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        dipoles[row_index,col,:] = dip1el[v_orb,SOMO2,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #50 <OS3|mu|SL2>
-    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        dipoles[row_index,col,:] = -dip1el[v_orb,SOMO1,:]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #51 <OS3|mu|HL1>
-    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + (ndocc * nvirt)):
-        o_orb = (col - col_index) // nvirt # Increase o_orb after every nvirt cols
-        v_orb = (col - col_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
-        dipoles[row_index,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
-        dipoles[col,row_index,:] = dipoles[row_index,col,:]
-    #52 <OS3|mu|HL2> = 0
-    #53 <OS3|mu|HL3> = 0
-    #54 <OS3|mu|3^HSD> = 0
-    # <OS3|mu|SLD> = 0
-    
-
-    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
-    #54 <HS1|H|HS1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
-            dipoles[col,row,:] = dipoles[row,col,:] 
-    #55 <HS1|mu|HS2>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #56 <HS1|mu|SL1> = 0
-    #57 <HS1|mu|SL2> = 0
-    #58 <HS1|mu|HL1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #59 <HS1|mu|HL2>
-    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #60 <HS1|mu|HL3>
-    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - dip1el[SOMO1, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #60 <HS1|mu|3^HSD>
-    col_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        o_orb2 = 0
-        o_orb3 = 1
-        for col in range(col_block_index, col_block_index + ndoc3):
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - dip1el[o_orb3, SOMO2, :]
-            elif o_orb1 == o_orb3:
-                dipoles[row, col, :] = dip1el[o_orb2, SOMO2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            o_orb3 += 1
-            if o_orb3 == ndocc:
-                o_orb2 += 1
-                o_orb3 = o_orb2 + 1
-    # <HS1|mu|SLD> = 0
-
-    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    #61 <HS2|mu|HS2>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #62 <HS2|mu|SL1> = 0
-    #63 <HS2|mu|SL2> = 0
-    #64 <HS2|mu|HL1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #65 <HS2|mu|HL2>
-    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #65 <HS2|mu|HL3>
-    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = - dip1el[SOMO2, v_orb, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #65 <HS2|mu|3^HSD>
-    col_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        o_orb2 = 0
-        o_orb3 = 1
-        for col in range(col_block_index, col_block_index + ndoc3):
-            if o_orb1 == o_orb2:
-                dipoles[row, col, :] = dip1el[o_orb3, SOMO1, :]
-            elif o_orb1 == o_orb3:
-                dipoles[row, col, :] = - dip1el[o_orb2, SOMO1, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            o_orb3 += 1
-            if o_orb3 == ndocc:
-                o_orb2 += 1
-                o_orb3 = o_orb2 + 1
-    # <HS2|mu|SLD> = 0
-
-    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
-    #66 <SL1|mu|SL1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #67 <SL1|mu|SL2>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row,col,:] = -dip1el[SOMO1,SOMO2,:]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #68 <SL1|mu|HL1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #69 <SL1|mu|HL2>
-    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #70 <SL1|mu|HL3>
-    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = dip1el[o_orb, SOMO2, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #70 <SL1|mu|3^HSD> = 0
-    # <SL1|mu|SLD>
-    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = (row - row_block_index) + (SOMO2 + 1)
-        v_orb2 = SOMO2 + 1
-        v_orb3 = SOMO2 + 2
-        for col in range(col_block_index, col_block_index + ndcv3):
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - dip1el[v_orb3, SOMO1, :]
-            elif v_orb1 == v_orb3:
-                dipoles[row, col, :] = dip1el[v_orb2, SOMO1, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            v_orb3 += 1
-            if v_orb3 >= norbs:
-                v_orb2 += 1
-                v_orb3 = v_orb2 + 1
-    
-    
-    
-    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    #71 <SL2|H|SL2>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-            else:    
-                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #72 <SL2|mu|HL1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #73 <SL2|mu|HL2>
-    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #74 <SL2|mu|HL3>
-    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = - dip1el[o_orb, SOMO1, :]
-                dipoles[col,row,:] = dipoles[row,col,:]
-    #74 <SL2|mu|3^HSD> = 0
-    # <SL2|mu|SLD>
-    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = (row - row_block_index) + (SOMO2 + 1)
-        v_orb2 = SOMO2 + 1
-        v_orb3 = SOMO2 + 2
-        for col in range(col_block_index, col_block_index + ndcv3):
-            if v_orb1 == v_orb2:
-                dipoles[row, col, :] = dip1el[v_orb3, SOMO2, :]
-            elif v_orb1 == v_orb3:
-                dipoles[row, col, :] = - dip1el[v_orb2, SOMO2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            v_orb3 += 1
-            if v_orb3 >= norbs:
-                v_orb2 += 1
-                v_orb3 = v_orb2 + 1
-    
-    
-    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #75 <HL1|mu|HL1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #76 <HL1|mu|HL2> = 0
-    #77 <HL1|mu|HL3> = 0
-    #78 <HL1|mu|3^HSD> = 0
-    # <HL1|mu|SLD> = 0
-    
-    
-    row_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #78 <HL2|mu|HL2>
-    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #79 <HL2|mu|HL3> = 0
-    #80 <HL2|mu|3^HSD> = 0
-    # <HL2|mu|SLD> = 0
-
-
-    row_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #80 <HL3|mu|HL3>
-    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-    #80 <HL3|H|3^HSD> = 0
-    # <HL3|H|SLD> = 0
-    
-    
-    row_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #81 <3^HSD|mu|3^HSD>
-    col_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    o_orb1 = 0
-    o_orb2 = 1
-    for row in range(row_block_index, row_block_index + ndoc3):
-        o_orb3 = 0
-        o_orb4 = 1
-        for col in range(col_block_index, col_block_index + ndoc3):
-            if o_orb1 == o_orb3 and o_orb2 == o_orb4:
-                for o in range(ndocc):
-                    dipoles[row, col, :] -= 2 * dip1el[o, o, :]
-                dipoles[row, col, :] += dip1el[o_orb1, o_orb1, :]
-                dipoles[row, col, :] += dip1el[o_orb2, o_orb2, :]
-                dipoles[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
-                dipoles[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
-            elif o_orb1 == o_orb3 and o_orb2 != o_orb4:
-                dipoles[row,col,:] = - dip1el[o_orb2,o_orb4,:]
-            elif o_orb2 == o_orb4 and o_orb1 != o_orb3:
-                dipoles[row,col,:] = dip1el[o_orb1,o_orb3,:]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            o_orb4 += 1
-            if o_orb4 == ndocc:
-                o_orb3 += 1
-                o_orb4 = o_orb3 + 1
-        o_orb2 += 1
-        if o_orb2 == ndocc:
-            o_orb1 += 1
-            o_orb2 = o_orb1 + 1
-    # <3^HSD|mu|SLD> = 0
-    
-    # <SLD|mu|SLD>
-    row_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #81 <3^HSD|mu|3^HSD>
-    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    v_orb1 = SOMO2 + 1
-    v_orb2 = SOMO2 + 2
-    for row in range(row_block_index, row_block_index + ndcv3):
-        v_orb3 = SOMO2 + 1
-        v_orb4 = SOMO2 + 2
-        for col in range(col_block_index, col_block_index + ndcv3):
-            if v_orb1 == v_orb3 and v_orb2 == v_orb4:
-                for o in range(ndocc):
-                    dipoles[row, col, :] -= 2 * dip1el[o, o, :]
-                dipoles[row, col, :] -= dip1el[v_orb1, v_orb1, :]
-                dipoles[row, col, :] -= dip1el[v_orb2, v_orb2, :]
-            elif v_orb1 == v_orb3 and v_orb2 != v_orb4:
-                dipoles[row,col,:] = - dip1el[v_orb2,v_orb4,:]
-            elif v_orb2 == v_orb4 and v_orb1 != v_orb3:
-                dipoles[row,col,:] = dip1el[v_orb1,v_orb3,:]
-            dipoles[col,row,:] = dipoles[row,col,:]
-            v_orb4 += 1
-            if v_orb4 == norbs:
-                v_orb3 += 1
-                v_orb4 = v_orb3 + 1
-        v_orb2 += 1
-        if v_orb2 == norbs:
-            v_orb1 += 1
-            v_orb2 = v_orb1 + 1
-    
-    
-    row_block_index = nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    #81 <DQ|mu|DQ>
-    col_block_index = nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
-        o_orb1 = (row - row_block_index) // nvirt
-        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb2 = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
-                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
-                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
-                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
-                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
-            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
-                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
-            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
-                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
-            dipoles[col,row,:] = dipoles[row,col,:]
-        
-    #print("%10.5f"%linalg.norm(dipoles[:,:,0] - dipoles[:,:,0].T))  # checking symmetric
-    #print("%10.5f"%linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
-    #print("%10.5f"%linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))   
-
-    OS1_perm_dip=dipoles[0,0,:]
-    ZW0_perm_dip=dipoles[1,1,:]
-    ZW0p_perm_dip=dipoles[2,2,:]
-    OS3_perm_dip=dipoles[ndcv1 + ndoc1 + 2*(ndocc * nvirt) + 2*nvirt + 2*ndocc +3, ndcv1 + ndoc1 + 2*(ndocc * nvirt) + 2*nvirt + 2*ndocc +3,:]
-    for dipole in [OS1_perm_dip, ZW0_perm_dip, ZW0p_perm_dip, OS3_perm_dip]:
-        for i in range(natoms):
-            atom_z=0
-            if atoms[i][0] in ['C','c','n1','N1']:
-                atom_z=1
-            elif atoms[i][0] in ['Cl','cl','CL','N2','n2']:
-                atom_z=2   
-            # for x in range(3):
-            #     perm_dip[x]+=atom_z*coords[i,x]*tobohr
-            dipole[:]+=atom_z*coords[i,:]*tobohr
-    print(f"Permanent dipole moment of reference states:\n \
-            Open-Shell Singlet (|OS1>) = {OS1_perm_dip[0]:.3f} x {OS1_perm_dip[1]:.3f} y {OS1_perm_dip[2]:.3f} z\n \
-            Zwitterion 0 (|ZW0>) = {ZW0_perm_dip[0]:.3f} x {ZW0_perm_dip[1]:.3f} y {ZW0_perm_dip[2]:.3f} z\n \
-            Zwitterion 0' (|ZW0'>) = {ZW0p_perm_dip[0]:.3f} x {ZW0p_perm_dip[1]:.3f} y {ZW0p_perm_dip[2]:.3f} z\n \
-            Open-Shell Triplet (|OS3>) = {OS3_perm_dip[0]:.3f} x {OS3_perm_dip[1]:.3f} y {OS3_perm_dip[2]:.3f} z\n")
-    return dipoles
-
-
-def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type, csf_tol=0.01):
-    print("Energy of the lowest CI state:", ci_energies[0])
-    osc_array1 = np.zeros_like(ci_energies)
-    osc_array3 = np.zeros_like(ci_energies)
-    s2_array = np.zeros_like(ci_energies)
-    nvirt = norbs - ndocc - 2
-    ndoc1 = int((ndocc ** 2 + ndocc) / 2)
-    ndcv1 = int((nvirt ** 2 + nvirt) / 2)
-    strng3 = ""
-    strng1 = ""
-    for i in range(rng): # Loop over CIS states
-        if ci_energies[i] - ci_energies[0] > cutoff_energy:
-            break
-        print("\nState %s %04.3f eV " % (i, ci_energies[i] - ci_energies[0]))
-        print("Excitation    CI Coef")
-        out_file.write("State %s %04.3f eV \n" % (i, ci_energies[i] - ci_energies[0]))
-        out_file.write("Excitation    CI Coef\n")
-        spin = 0 # initialise total spin
-        for j in range (ci_coeffs.shape[0]): # Loop over configurations in each CIS state
-            if ci_type == 'CIS':
-                ########### SINGLET CSFS ############   
-            # Open shell singlet ground state (|OS1>)
-                if j == 0: 
-                    str = "|1^OS>"
-                    # S^2 = 0
-            # Zwitterion 0 (|ZW0>)    
-                elif j == 1:
-                    str = "|1^ZW0>"
-                    # S^2 = 0
-            # Zwitterion 0' (|ZW0'>)   
-                elif j == 2:
-                    str = "|1^ZW0'>"
-                    # S^2 = 0
-            # Singlet Homo to SOMO 1 (|1^HS1>)
-                elif j > 2 and j <= ndocc + 2:
-                    iorb = ndocc + 3 - j
-                    str = f"|1^HS1_{iorb}>" 
-                    # S^2 = 0 
-            # Singlet Homo to SOMO 2 (|1^HS2>)
-                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
-                    iorb = 2 * ndocc + 3 - j
-                    str = f"|1^HS2_{iorb}>" 
-                    # S^2 = 0
-            # Singlet SOMO to LUMO 1 (|1^SL1>)
-                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
-                    iorb = j - (2 * ndocc + 2)
-                    str = f"|1^SL1_{iorb}'>"
-                    # S^2 = 0
-            # Singlet SOMO to LUMO 2 (|1^SL2>)
-                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
-                    iorb = j - (nvirt + 2 * ndocc + 2)
-                    str = f"|1^SL2_{iorb}'>"
-                    # S^2 = 0
-                ########### TRIPLET CSFs ###########
-            # Triplet ground state (|OS3>)
-                elif j == (2 * nvirt + 2 * ndocc + 3): 
-                    str = "|3^OS>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet Homo to SOMO 1 (|3^HS1>)
-                elif j > (2 * nvirt + 2 * ndocc + 3) and j <= (2 * nvirt + 3 * ndocc + 3):
-                    iorb = 2 * nvirt + 3 * ndocc + 4 - j
-                    str = f"|3^HS1_{iorb}>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1) 
-            # Triplet Homo to SOMO 2 (|3^HS2>)
-                elif j > (2 * nvirt + 3 * ndocc + 3) and j <= (2 * nvirt + 4 * ndocc + 3):
-                    iorb = 2 * nvirt + 4 * ndocc + 4 - j
-                    str = f"|3^HS2_{iorb}>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet SOMO to LUMO 1 (|3^SL1>)
-                elif j > (2 * nvirt + 4 * ndocc + 3) and j <= (3 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL1_{iorb}'>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet SOMO to LUMO 2 (|3^SL2>)
-                elif j > (3 * nvirt + 4 * ndocc + 3) and j <= (4 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (3 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL2_{iorb}'>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-                if np.absolute(ci_coeffs[j,i]) > csf_tol:
-                    print("%s %10.5f" %(str, ci_coeffs[j,i]))
-                    out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
-                    
-            elif ci_type == 'XCIS':
-            ########## SINGLET CSFS ##########   
-            # Open shell singlet ground state (|OS1>)
-                if j == 0: 
-                    str = "|1^OS>"
-                    # S^2 = 0
-            # Zwitterion 0 (|ZW0>)    
-                elif j == 1:
-                    str = "|1^ZW0>"
-                    # S^2 = 0
-            # Zwitterion 0' (|ZW0'>)   
-                elif j == 2:
-                    str = "|1^ZW0'>"
-                    # S^2 = 0
-            # Singlet Homo to SOMO 1 (|1^HS1>)
-                elif j > 2 and j <= ndocc + 2:
-                    iorb = ndocc + 3 - j
-                    str = f"|1^HS1_{iorb}>" 
-                    # S^2 = 0 
-            # Singlet Homo to SOMO 2 (|1^HS2>)
-                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
-                    iorb = 2 * ndocc + 3 - j
-                    str = f"|1^HS2_{iorb}>" 
-                    # S^2 = 0
-            # Singlet SOMO to LUMO 1 (|1^SL1>)
-                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
-                    iorb = j - (2 * ndocc + 2)
-                    str = f"|1^SL1_{iorb}'>"
-                    # S^2 = 0
-            # Singlet SOMO to LUMO 2 (|1^SL2>)
-                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
-                    iorb = j - (nvirt + 2 * ndocc + 2)
-                    str = f"|1^SL2_{iorb}'>"
-                    # S^2 = 0
-            # Singlet HOMO to LUMO 1 (|1^HL1>)
-                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL1_{o_orb}{v_orb}'>" 
-                    # S^2 = 0
-            # Singlet HOMO to LUMO 2 (|1^HL2>)
-                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL2_{o_orb}{v_orb}'>" 
-                    # S^2 = 0
-            ########### TRIPLET CSFs ###########
-            # Triplet ground state (|OS3>)
-                elif j == (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
-                    str = "|3^OS>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet Homo to SOMO 1 (|3^HS1>)
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
-                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
-                    str = f"|3^HS1_{iorb}>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1) 
-            # Triplet Homo to SOMO 2 (|3^HS2>)
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
-                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
-                    str = f"|3^HS2_{iorb}>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet SOMO to LUMO 1 (|3^SL1>)
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL1_{iorb}'>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet SOMO to LUMO 2 (|3^SL2>)
-                elif j > (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL2_{iorb}'>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet HOMO to LUMO 1 (|1^HL1>)
-                elif j > (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL1_{o_orb}{v_orb}'>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet HOMO to LUMO 2 (|3^HL2>)
-                elif j > (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL2_{o_orb}{v_orb}'>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet HOMO to LUMO 3 (|3^HL2>)
-                elif j > (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL3_{o_orb}{v_orb}'>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Quintet HOMO to LUMO (|5^HL>)
-                elif j > (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|5^HL_{o_orb}{v_orb}'>" 
-                    spin += 6 * ci_coeffs[j,i]**2 # (S=2)
-                if np.absolute(ci_coeffs[j,i]) > csf_tol:
-                    print("%s %10.5f" %(str, ci_coeffs[j,i]))
-                    out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
-
-            elif ci_type == 'XCISD':
-            ########## SINGLET CSFS ##########   
-            # Open shell singlet ground state (|OS1>)
-                if j == 0: 
-                    str = "|1^OS>"
-                    # S^2 = 0
-            # Zwitterion 0 (|ZW0>)    
-                elif j == 1:
-                    str = "|1^ZW0>"
-                    # S^2 = 0
-            # Zwitterion 0' (|ZW0'>)   
-                elif j == 2:
-                    str = "|1^ZW0'>"
-                    # S^2 = 0
-            # Singlet Homo to SOMO 1 (|1^HS1>)
-                elif j > 2 and j <= ndocc + 2:
-                    iorb = ndocc + 3 - j
-                    str = f"|1^HS1_{iorb}>" 
-                    # S^2 = 0 
-            # Singlet Homo to SOMO 2 (|1^HS2>)
-                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
-                    iorb = 2 * ndocc + 3 - j
-                    str = f"|1^HS2_{iorb}>" 
-                    # S^2 = 0
-            # Singlet SOMO to LUMO 1 (|1^SL1>)
-                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
-                    iorb = j - (2 * ndocc + 2)
-                    str = f"|1^SL1_{iorb}'>"
-                    # S^2 = 0
-            # Singlet SOMO to LUMO 2 (|1^SL2>)
-                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
-                    iorb = j - (nvirt + 2 * ndocc + 2)
-                    str = f"|1^SL2_{iorb}'>"
-                    # S^2 = 0
-            # Singlet HOMO to LUMO 1 (|1^HL1>)
-                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL1_{o_orb}{v_orb}'>" 
-                    # S^2 = 0
-            # Singlet HOMO to LUMO 2 (|1^HL2>)
-                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL2_{o_orb}{v_orb}'>" 
-                    # S^2 = 0
-            # Singlet Double HOMO to SOMO (|1^HSD>)
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-                    k = j - block_start
-                    o_orb1 = ndocc 
-                    o_orb2 = ndocc
-                    temp_k = k
-                    row_size = ndocc
-                    while temp_k >= row_size:
-                        temp_k -= row_size
-                        o_orb1 -= 1
-                        row_size -= 1
-                    o_orb2 = o_orb1 - temp_k
-                    str = f"|1^HSD_{o_orb1}{o_orb2}>"
-                    # S^2 = 0
-            # Singlet Double SOMO to LUMO (|1^SLD>)
-                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    block_start = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-                    k = j - block_start
-                    v_orb1 = 1
-                    v_orb2 = 1
-                    temp_k = k
-                    row_size = nvirt
-                    while temp_k >= row_size:
-                        temp_k -= row_size
-                        v_orb1 += 1
-                        row_size -= 1
-                    v_orb2 = v_orb1 + temp_k
-                    str = f"|1^SLD_{v_orb1}'{v_orb2}'>"
-                    # S^2 = 0
-            ########### TRIPLET CSFs ###########
-            # Triplet ground state (|OS3>)
-                elif j == (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
-                    str = "|3^OS>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet Homo to SOMO 1 (|3^HS1>)
-                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
-                    iorb = (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
-                    str = f"|3^HS1_{iorb}>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1) 
-            # Triplet Homo to SOMO 2 (|3^HS2>)
-                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
-                    iorb = (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
-                    str = f"|3^HS2_{iorb}>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet SOMO to LUMO 1 (|3^SL1>)
-                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL1_{iorb}'>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet SOMO to LUMO 2 (|3^SL2>)
-                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL2_{iorb}'>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet HOMO to LUMO 1 (|1^HL1>)
-                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL1_{o_orb}{v_orb}'>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet HOMO to LUMO 2 (|3^HL2>)
-                elif j > (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL2_{o_orb}{v_orb}'>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet HOMO to LUMO 3 (|3^HL2>)
-                elif j > (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL3_{o_orb}{v_orb}'>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet double HOMO to SOMO    
-                elif j > (ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    block_start = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-                    k = j - block_start
-                    o_orb1 = ndocc
-                    temp_k = k
-                    row_size = o_orb1 - 1
-                    while temp_k >= row_size and row_size > 0:
-                        temp_k -= row_size
-                        o_orb1 -= 1
-                        row_size = o_orb1 - 1
-                    o_orb2 = (o_orb1 - 1) - temp_k
-                    str = f"|3^HSD_{o_orb1}{o_orb2}>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet double SOMO to LUMO    
-                elif j > (ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    block_start = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-                    k = j - block_start
-                    o_orb1 = 1
-                    temp_k = k
-                    row_size = nvirt - 1 
-                    while temp_k >= row_size and row_size > 0:
-                        temp_k -= row_size
-                        o_orb1 += 1
-                        row_size = nvirt - o_orb1
-                    o_orb2 = o_orb1 + 1 + temp_k
-                    str = f"|3^SLD_{o_orb1}{o_orb2}>"
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Quintet HOMO to LUMO (|5^HL>)
-                elif j > (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|5^HL_{o_orb}{v_orb}'>" 
-                    spin += 6 * ci_coeffs[j,i]**2 # (S=2)
-                if np.absolute(ci_coeffs[j,i]) > csf_tol:
-                    print("%s %10.5f" %(str, ci_coeffs[j,i]))
-                    out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
-            
-        if i == 0:
-            if spin > 1:
-                print('Ground state is triplet')
-                triplet = 0
-                singlet = 1
-            else:
-                print('Ground state is singlet')
-                singlet = 0
-                triplet = 1
-
-        osc3 = 2.0/3.0 * ((ci_energies[i] - ci_energies[triplet]) / toev) * (tdms[triplet][i,0]**2 + tdms[triplet][i,1]**2 + tdms[triplet][i,2]**2)  # Calculating Oscillator Strength with Triplet Ground state
-        osc1 = 2.0/3.0 * ((ci_energies[i] - ci_energies[singlet]) / toev) * (tdms[singlet][i,0]**2 + tdms[singlet][i,1]**2 + tdms[singlet][i,2]**2)  # Calculating Oscillator Strength with Singlet Ground state
-        osc_array3[i] = osc3
-        osc_array1[i] = osc1
-        s2_array[i] = spin
-        print("TDMs with Triplet 'Ground' state")
-        print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[triplet][i,0], tdms[triplet][i,1], tdms[triplet][i,2], osc3, spin))
-        print("--------------------------------------------------------------------")
-        print("TDMs with Singlet 'Ground' state")
-        print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[singlet][i,0], tdms[singlet][i,1], tdms[singlet][i,2], osc1, spin))
-        print("--------------------------------------------------------------------\n")
-        out_file.write("TDMs with Triplet 'Ground' state")
-        out_file.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[triplet][i,0], tdms[triplet][i,1], tdms[triplet][i,2], osc3, spin))
-        out_file.write("--------------------------------------------------------------------")
-        out_file.write("TDMs with Singlet 'Ground' state")
-        out_file.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[singlet][i,0], tdms[singlet][i,1], tdms[singlet][i,2], osc1, spin))
-        out_file.write("--------------------------------------------------------------------\n")
-        #strng3 = strng3 + broaden(20.0,osc3,ci_energies[i]-ci_energies[triplet])
-        strng3 = strng3 + broaden(FWHM,osc3,ci_energies[i]-ci_energies[triplet])
-        strng1 = strng1 + broaden(FWHM,osc1,ci_energies[i]-ci_energies[singlet])
-    
-    return (strng3, strng1), (osc_array3, osc_array1), s2_array
-
-
-def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
-    # Print energies of CSFs
-        nvirt = norbs - ndocc - 2
-        ndoc3 = int((ndocc ** 2 - ndocc) / 2)
-        ndoc1 = int((ndocc ** 2 + ndocc) / 2)
-        for j in range(ham_rot.shape[1]):
-            if ci_type == 'CIS':
-                if j == 0: 
-                    str = "|1^OS>"
-                elif j == 1:
-                    str = "|1^ZW0>"
-                elif j == 2:
-                    str = "|1^ZW0'>"
-                elif j > 2 and j <= ndocc + 2:
-                    iorb = ndocc + 3 - j
-                    str = f"|1^HS1_{iorb}>"
-                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
-                    iorb = 2 * ndocc + 3 - j
-                    str = f"|1^HS2_{iorb}>" 
-                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
-                    iorb = j - (2 * ndocc + 2)
-                    str = f"|1^SL1_{iorb}'>"
-                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
-                    iorb = j - (nvirt + 2 * ndocc + 2)
-                    str = f"|1^SL2_{iorb}'>"
-                elif j == (2 * nvirt + 2 * ndocc + 3): 
-                    str = "|3^OS>"
-                elif j > (2 * nvirt + 2 * ndocc + 3) and j <= (2 * nvirt + 3 * ndocc + 3):
-                    iorb = 2 * nvirt + 3 * ndocc + 4 - j
-                    str = f"|3^HS1_{iorb}>" 
-                elif j > (2 * nvirt + 3 * ndocc + 3) and j <= (2 * nvirt + 4 * ndocc + 3):
-                    iorb = 2 * nvirt + 4 * ndocc + 4 - j
-                    str = f"|3^HS2_{iorb}>" 
-                elif j > (2 * nvirt + 4 * ndocc + 3) and j <= (3 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL1_{iorb}'>"
-                elif j > (3 * nvirt + 4 * ndocc + 3) and j <= (4 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (3 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL2_{iorb}'>"
-                print(f"Energy of CSF {str}:", np.diag(ham_rot)[j])
-                
-            elif ci_type == 'XCIS':
-                if j == 0: 
-                    str = "|1^OS>" 
-                elif j == 1:
-                    str = "|1^ZW0>"
-                elif j == 2:
-                    str = "|1^ZW0'>"
-                elif j > 2 and j <= ndocc + 2:
-                    iorb = ndocc + 3 - j
-                    str = f"|1^HS1_{iorb}>"
-                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
-                    iorb = 2 * ndocc + 3 - j
-                    str = f"|1^HS2_{iorb}>"
-                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
-                    iorb = j - (2 * ndocc + 2)
-                    str = f"|1^SL1_{iorb}'>"
-                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
-                    iorb = j - (nvirt + 2 * ndocc + 2)
-                    str = f"|1^SL2_{iorb}'>"
-                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL1_{o_orb}{v_orb}'>"
-                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL2_{o_orb}{v_orb}'>"
-                elif j == (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
-                    str = "|3^OS>"
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
-                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
-                    str = f"|3^HS1_{iorb}>" 
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
-                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
-                    str = f"|3^HS2_{iorb}>" 
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL1_{iorb}'>"
-                elif j > (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL2_{iorb}'>"
-                elif j > (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL1_{o_orb}{v_orb}'>"
-                elif j > (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL2_{o_orb}{v_orb}'>"
-                elif j > (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL3_{o_orb}{v_orb}'>"
-                elif j > (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|5^HL_{o_orb}{v_orb}'>"
-                print(f"Energy of CSF {str}:", np.diag(ham_rot)[j])
-            
-            elif ci_type == 'XCISD':
-                if j == 0: 
-                    str = "|1^OS>" 
-                elif j == 1:
-                    str = "|1^ZW0>"
-                elif j == 2:
-                    str = "|1^ZW0'>"
-                elif j > 2 and j <= ndocc + 2:
-                    iorb = ndocc + 3 - j
-                    str = f"|1^HS1_{iorb}>"
-                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
-                    iorb = 2 * ndocc + 3 - j
-                    str = f"|1^HS2_{iorb}>"
-                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
-                    iorb = j - (2 * ndocc + 2)
-                    str = f"|1^SL1_{iorb}'>"
-                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
-                    iorb = j - (nvirt + 2 * ndocc + 2)
-                    str = f"|1^SL2_{iorb}'>"
-                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL1_{o_orb}{v_orb}'>"
-                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
-                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
-                    str = f"|1^HL2_{o_orb}{v_orb}'>"
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
-                    block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-                    k = j - block_start
-                    o_orb1 = ndocc 
-                    o_orb2 = ndocc
-                    temp_k = k
-                    row_size = ndocc
-                    while temp_k >= row_size:
-                        temp_k -= row_size
-                        o_orb1 -= 1
-                        row_size -= 1
-                    o_orb2 = o_orb1 - temp_k
-                    str = f"|1^HSD_{o_orb1}{o_orb2}>"
-                elif j == (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
-                    str = "|3^OS>"
-                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
-                    iorb = (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
-                    str = f"|3^HS1_{iorb}>" 
-                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
-                    iorb = (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
-                    str = f"|3^HS2_{iorb}>" 
-                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL1_{iorb}'>"
-                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
-                    str = f"|3^SL2_{iorb}'>"
-                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL1_{o_orb}{v_orb}'>"
-                elif j > (ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL2_{o_orb}{v_orb}'>"
-                elif j > (ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3^HL3_{o_orb}{v_orb}'>"
-                elif j > (ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndoc3 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    block_start = ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-                    k = j - block_start
-                    o_orb1 = ndocc
-                    temp_k = k
-                    row_size = o_orb1 - 1
-                    while temp_k >= row_size and row_size > 0:
-                        temp_k -= row_size
-                        o_orb1 -= 1
-                        row_size = o_orb1 - 1
-                    o_orb2 = (o_orb1 - 1) - temp_k
-                    str = f"|3^HSD_{o_orb1}{o_orb2}>"
-                elif j > (ndoc3 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (ndoc3 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (ndoc3 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|5^HL_{o_orb}{v_orb}'>"
-            
-                print(f"Energy of CSF {str}:", np.diag(ham_rot)[j])
-   
-
-
-def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file, ci_type = "XCIS"):
-    '''
-    Calculates monoradical excited states in rotated (CSF) basis using the CIS or XCIS method. Used for molecules without Nitrogen or Chlorine present.
-    
-    Args:
-        ndocc (int): Number of doubly occupied orbitals
-        norbs (int): Total number of orbitals
-        coords (array): Array of atomic coordinates
-        atoms (array): Array of atomic symbols
-        energy0 (float): Ground state energy
-        repulsion (array): 2-electron repulsion integrals in AO basis
-        orb_energies (array): HF orbital energies
-        hf_orbs (array): HF molecular orbitals
-        file (str): Name of file to write output to (without extension)
-
-    '''
-    base_dir = os.path.dirname(file)
-    mol_name = os.path.basename(file)
-    output_path = os.path.join(base_dir, 'Excited_States', f'{mol_name}_excitedstates.xyz')
-    with open(output_path,'w') as out:
-        print("")
-        print("------------------------")
-        print("Starting ExROPPP calculation for diradical in rotated basis")
-        print("------------------------\n")
-
-        out.write("")
-        out.write("------------------------")
-        out.write("Starting ExROPPP calculation for diradical in rotated basis")
-        out.write("------------------------\n")
-
-        # Transform 2-el ingrls into mo basis
-        rep_tens = transform(repulsion,hf_orbs)
-        print('Coulomb Matrix in MO basis, J_ij = (ii|jj):\n', np.einsum('iijj->ij', rep_tens))
-        print('Coulomb Matrix in MO basis, K_ij = (ij|ji):\n', np.einsum('ijij->ij', rep_tens))
-        # Get exchange and Coulomb terms for SOMOs
-        '''
-        print('Two-Electron Array')
-        for p in range(norbs):
-            for q in range(norbs):
-                for r in range(norbs):
-                    for s in range(norbs):
-                        val = rep_tens[p, q, r, s]
-                        # Only print significant values to avoid clutter
-                        if abs(val) > 1e-8:
-                            print(f"({p}, {q} | {r}, {s}) {val:15.8f}")
-        '''
-        # Construct CIS Hamiltonian
-        if ci_type == 'CIS':
-            ham_rot = hetero_cis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens)
-        elif ci_type == 'XCIS':
-            ham_rot = hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens)
-        elif ci_type == 'XCISD':
-            ham_rot = hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens)
-            
-        print('Dimensions of CI matrix:', ham_rot.shape)
-        print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
-        print("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
-
-        out.write("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... \n")
-        out.write("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
-        
-        # Print energies of CSFs
-        #print_csf_info(ham_rot, norbs, ndocc, ci_type=ci_type)
-        
-        # Set rng and cutoff_energy
-        nstates = ham_rot.shape[0]
-        if states_cutoff_option == 'states' and states_to_print <= nstates:
-            rng = states_to_print
-            print('Lowest %d states. WARNING - Some states may not be included in the spectrum.\n'%states_to_print)
-            out.write('Lowest %d states. WARNING - Some states may not be included in the spectrum.\n'%states_to_print)
-        else:
-            rng = nstates
-        if states_cutoff_option == 'energy':
-            cutoff_energy = energy_cutoff
-            print('Used energy cutoff of %04.2f eV for states. WARNING - Some states may not be included in spectrum.\n'%cutoff_energy)
-            out.write('Used energy cutoff of %04.2f eV for states. WARNING - Some states may not be included in spectrum.\n'%cutoff_energy)
-        else:
-            cutoff_energy = 100
-        
-        # Diagonalize CIS Hamiltonianfor first rng excited states
-        if rng < nstates:
-            print("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
-            out.write("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
-
-            ci_energies, ci_coeffs = sp.eigsh(ham_rot,k=rng,which="SA")
-        elif rng == nstates:
-            print("Diagonalizing Hamiltonian using the dense matrix method ...\n")
-            out.write("Diagonalizing Hamiltonian using the dense matrix method ...\n")
-            ci_energies, ci_coeffs = linalg.eigh(ham_rot)
-        
-
-        # Calculate transition dipole moment matrix
-        if ci_type == 'CIS':
-            dip_array = dipole_cis(coords,atoms,norbs,hf_orbs,ndocc,nstates)
-        elif ci_type == 'XCIS':
-            dip_array = dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates)
-        elif ci_type == 'XCISD':
-            dip_array = dipole_xcisd(coords,atoms,norbs,hf_orbs,ndocc,nstates)
-        
-        print("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... ")
-        print(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
-            {linalg.norm(dip_array[:, :, 1]-dip_array[:,:,1].T):.5f}, {linalg.norm(dip_array[:, :, 2]-dip_array[:,:,2].T):.5f}.\n")
-        out.write("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... \n")
-        out.write(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
-            {linalg.norm(dip_array[:, :, 1]-dip_array[:,:,1].T):.5f}, {linalg.norm(dip_array[:, :, 2]-dip_array[:,:,2].T):.5f}.\n")
-        
-        dip_couplings = np.einsum("ijx,jk",dip_array,ci_coeffs)
-        state0_tdms = np.einsum("j,jix",ci_coeffs[:,0].T, dip_couplings)
-        state1_tdms = np.einsum("j,jix",ci_coeffs[:,1].T, dip_couplings)
-        tdms = (state0_tdms, state1_tdms) 
-        
-        # Print information about CI states
-        strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type=ci_type, csf_tol=0.05)
-        strngs = (strngs[0][1:], strngs[1][1:])
-    return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
-
-
-
-def hetero_cis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
-    '''
-    Form the CIS Hamiltonian matrix in the rotated CSF basis. Matrix elements on off-diagonals are typically 2e integrals, found in the working doc.
-    Note that the basis is given in the working doc, i.e the ordering of CSFs. We have singlets then triplets, making the Hamiltonian block diagonal.
-    
-    Args:
-        ndocc (int): Number of doubly occupied orbitals.
-        energy0 (float): Ground state HF energy.
-        orb_energies (array): HF orbital energies.
-        rep_tens (array): 4D tensor giving two-electron repulsion integrals in the MO basis.
-    Returns:
-    '''
-    SOMO1 = ndocc # Index of SOMO1
-    SOMO2 = ndocc + 1 # Index of SOMO2
-    nvirt = norbs - ndocc - 2 # Number of virtual orbitals
-    nstates = 4 * ndocc + 4 * nvirt + 4
-    cish = np.zeros((nstates,nstates))
-    
-    ################# SINGLET BLOCK ######################
-    #1 <OS1|H|OS1>
-    cish[0,0] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + (1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #2 <OS1|H|ZW0>
-    cish[0,1] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
-    cish[1,0] = cish[0,1]
-    #3 <OS1|H|ZW0'>
-    cish[0,2] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
-    cish[2,0] = cish[0,2]
-    #4 <OS1|H|HS1> 
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[0,col] = 1.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]
-        cish[col,0] = cish[0,col]
-    #5 <OS1|H|HS2> 
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[0,col] = 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,0] = cish[0,col]
-    #6 <OS1|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,0] = cish[0,col]
-    #7 <OS1|H|SL2>
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[0,col] = 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
-        cish[col,0] = cish[0,col]
-    #8 - 13 are triplet states so have 0 interaction.
-    
-    # 14 <ZW0|H|ZW0>
-    cish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
-    #15 <ZW0|H|ZW0'>
-    cish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
-    cish[2,1] = cish[1,2]
-    #16 <ZW0|H|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[1,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
-        cish[col,1] = cish[1,col]
-    #17 <ZW0|H|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[1,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
-        cish[col, 1] = cish[1,col]
-    #18 <ZW0|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[1,col] = (2 ** 0.5) * (rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1])
-        cish[col,1] = cish[1,col]
-    #19 <ZW0|H|SL2>
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[1,col] = (2 ** 0.5) * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,1] = cish[1,col]
-    #20 - 25 are triplet states so have 0 interaction.
-    
-    #26 <ZW0'|H|ZW0'>
-    cish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
-    #27 <ZW0'|H|HS1>
-    block_index = 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[2,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
-        cish[col,2] = cish[2,col]
-    #28 <ZW0'|H|HS2>
-    block_index = ndocc + 3
-    for col in range(block_index, block_index + ndocc):
-        o_orb = col - block_index
-        cish[2,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]) # CHECK SIGN
-        cish[col,2] = cish[2,col]
-    #29 <ZW0'|H|SL1>
-    block_index = 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[2,col] = (-2 ** 0.5) * rep_tens[v_orb,SOMO2,SOMO2,SOMO1]
-        cish[col,2] = cish[2,col]
-    #30 <ZW0'|H|SL2>
-    block_index = nvirt + 2 * ndocc + 3
-    for col in range(block_index, block_index + nvirt):
-        v_orb = col - block_index + (SOMO2 + 1)
-        cish[2,col] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - rep_tens[v_orb,SOMO2,SOMO1,SOMO1]) # CHECK SIGN
-        cish[col,2] = cish[2,col]
-    #31 - 36 are triplet states so have 0 interaction.
-    
-    row_block_index = 3
-    #37 <HS1|H|HS1>
-    col_block_index = 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
-            else:    
-                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]) - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]
-            cish[col, row] = cish[row,col]
-    #38 <HS1|H|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO1, SOMO1] \
-                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
-            else:    
-                cish[row, col] = - rep_tens[o_orb1, o_orb2, SOMO1, SOMO2] - rep_tens[o_orb1, SOMO1, SOMO2, o_orb2]
-            cish[col, row] = cish[row, col]
-    #39 <HS1|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-            cish[col, row] = cish[row,col]
-    #40 <HS1|H|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb]
-            cish[col, row] = cish[row,col]
-    # 41 - 46 are triplets so have no interaction
-    
-    row_block_index = ndocc + 3
-    #47 <HS2|H|HS2>
-    col_block_index = ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
-            else:    
-                cish[row, col] = 1.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb2, o_orb1, SOMO2, SOMO2]) - 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
-            cish[col, row] = cish[row,col]
-    #48 <HS2|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
-            cish[col, row] = cish[row, col]
-    #49 <HS2|H|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] - 2 * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
-            cish[col, row] = cish[row,col]
-    #50 - 55 are triplets so no interaction
-    
-    row_block_index = 2 * ndocc + 3
-    #56 <SL1|H|SL1>
-    col_block_index = 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
-            else:    
-                cish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
-            cish[col, row] = cish[row,col]
-    #57 <SL1|H|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO1, SOMO2, v_orb1]
-            else:    
-                cish[row, col] = - rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, v_orb2]
-            cish[col, row] = cish[row,col]
-    
-    #58 - 63 are all triplets so have no interaction
-    
-    row_block_index = nvirt + 2 * ndocc + 3
-    #64 <SL2|H|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2]+ 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                cish[row, col] = 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2]
-            cish[col, row] = cish[row,col]
-    
-    #65 - 70 are all triplets so have no interaction
-    
-    ################# TRIPLET BLOCK ######################
-    
-    row_index = 2 * nvirt + 2 * ndocc + 3
-    #71 <OS3|H|OS3>
-    cish[row_index, row_index] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - (0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #72 <OS3|H|HS1>
-    col_index = 2 * nvirt + 2 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        cish[row_index, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1]
-        cish[col, row_index] = cish[row_index,col]
-    #73 <OS3|H|HS2>
-    col_index = 2 * nvirt + 3 * ndocc + 4
-    for col in range(col_index, col_index + ndocc):
-        o_orb = col - col_index
-        cish[row_index, col] = 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2]
-        cish[col, row_index] = cish[row_index,col]
-    #73 <OS3|H|SL1>
-    col_index = 2 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        cish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO2, SOMO1] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
-        cish[col, row_index] = cish[row_index,col]
-    #73 <OS3|H|SL2>
-    col_index = 3 * nvirt + 4 * ndocc + 4
-    for col in range(col_index, col_index + nvirt):
-        v_orb = col - col_index + (SOMO2 + 1)
-        cish[row_index, col] = - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1]
-        cish[col, row_index] = cish[row_index, col]
-    
-    row_block_index = 2 * nvirt + 2 * ndocc + 4
-    #74 <HS1|H|HS1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
-            else:    
-                cish[row, col] = 0.5 * (rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]) - 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1]
-            cish[col, row] = cish[row,col]
-    #75 <HS1|H|HS2>
-    col_block_index = 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(col_block_index, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-                cish[row, col] = rep_tens[SOMO1, o_orb1, o_orb1, SOMO2] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO2] + 0.5 * rep_tens[SOMO2, SOMO1, SOMO1, SOMO1] \
-                             + 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]                                                               #CHECK RESULT, SAME AS SINGLET?
-            else:    
-                cish[row, col] = rep_tens[o_orb2, o_orb1, SOMO1, SOMO2] - rep_tens[o_orb2, SOMO1, SOMO2, o_orb1]
-            cish[col, row] = cish[row,col]
-    #76 <HS1|H|SL1>
-    col_block_index = 2 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
-            cish[col, row] = cish[row,col]
-    #77 <HS1|H|SL2>
-    col_block_index = 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb]
-            cish[col, row] = cish[row,col]
-
-    
-    row_block_index = 2 * nvirt + 3 * ndocc + 4
-    #78 <HS2|H|HS2>
-    col_block_index = 2 * nvirt + 3 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb1 = row - row_block_index
-        for col in range(row, col_block_index + ndocc):
-            o_orb2 = col - col_block_index
-            if o_orb1 == o_orb2:
-
-                cish[row, col] = energy0 + orb_energies[SOMO2] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
-            else:
-                cish[row, col] = rep_tens[o_orb1, o_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] - 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
-            cish[col, row] = cish[row,col]
-    #79 <HS2|H|SL1>
-    col_block_index = 2 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
-            cish[col, row] = cish[row,col]
-    #80 <HS2|H|SL2>
-    col_block_index = 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + ndocc):
-        o_orb = row - row_block_index
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb = col - col_block_index + (SOMO2 + 1)
-            cish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb]
-            cish[col, row] = cish[row,col]
-            
-    row_block_index = 2 * nvirt + 4 * ndocc + 4
-    #81 <SL1|H|SL1>
-    col_block_index =  2 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
-            else:    
-                cish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
-            cish[col, row] = cish[row,col]
-    #82 <SL1|H|SL2>
-    col_block_index = 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = rep_tens[v_orb1, v_orb1, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO1, SOMO2, v_orb1] - 0.5 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[SOMO1, SOMO2, SOMO2, SOMO2]
-            else:    
-                cish[row, col] = rep_tens[v_orb1, v_orb2, SOMO1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, v_orb2] # CHECK SIGN
-            cish[col, row] = cish[row,col]
-    
-    row_block_index =  3 * nvirt + 4 * ndocc + 4
-    #83 <SL2|H|SL2>
-    col_block_index =   3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                cish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                cish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1] \
-                                  - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2]
-            cish[col, row] = cish[row,col]
-    
-    return cish
-
 
 def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
     '''
@@ -5325,11 +1020,11 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
     ################# SINGLET BLOCK ######################
     #1 <OS1|H|OS1>
     xcish[0,0] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + (1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #2 <OS1|H|ZW0>
-    xcish[0,1] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
+    #2 <OS1|H|ZW->
+    xcish[0,1] = rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2]
     xcish[1,0] = xcish[0,1]
-    #3 <OS1|H|ZW0'>
-    xcish[0,2] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO2,SOMO2] - rep_tens[SOMO1,SOMO2,SOMO1,SOMO1])
+    #3 <OS1|H|ZW+>
+    xcish[0,2] = 0
     xcish[2,0] = xcish[0,2]
     #4 <OS1|H|HS1> 
     block_index = 3
@@ -5347,13 +1042,13 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
+        xcish[0,col] = 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
         xcish[col,0] = xcish[0,col]
     #7 <OS1|H|SL2>
     block_index = nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[0,col] = 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
+        xcish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
         xcish[col,0] = xcish[0,col]
     #8 <OS1|H|HL1> = 0
     #9 <OS1|H|HL2>
@@ -5365,90 +1060,90 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         xcish[col,0] = xcish[0,col]
 
     
-    #10 <ZW0|H|ZW0>
-    xcish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
-    #11 <ZW0|H|ZW0'>
-    xcish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
+    #10 <ZW->|H|ZW->
+    xcish[1,1] = energy0 + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
+    #11 <ZW->|H|ZW+>
+    xcish[1,2] = orb_energies[SOMO1] - orb_energies[SOMO2]
     xcish[2,1] = xcish[1,2]
-    #12 <ZW0|H|HS1>
+    #12 <ZW->|H|HS1>
     block_index = 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[1,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
+        xcish[1,col] = rep_tens[o_orb,SOMO2,SOMO1,SOMO1] + 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2]
         xcish[col,1] = xcish[1,col]
-    #13 <ZW0|H|HS2>
+    #13 <ZW->|H|HS2>
     block_index = ndocc + 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[1,col] = (2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
+        xcish[1,col] = rep_tens[o_orb,SOMO1,SOMO2,SOMO2] + 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]
         xcish[col, 1] = xcish[1,col]
-    #14 <ZW0|H|SL1>
+    #14 <ZW-|H|SL1>
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[1,col] = (2 ** 0.5) * (rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1])
+        xcish[1,col] = rep_tens[v_orb,SOMO2,SOMO1,SOMO1] + 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2]
         xcish[col,1] = xcish[1,col]
-    #15 <ZW0|H|SL2>
+    #15 <ZW-|H|SL2>
     block_index = nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[1,col] = (2 ** 0.5) * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
+        xcish[1,col] = rep_tens[v_orb,SOMO1,SOMO2,SOMO2] + 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
         xcish[col,1] = xcish[1,col]
-    #16 <ZW0|H|HL1>
+    #16 <ZW-|H|HL1>
     block_index = 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[1,col] = 2 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+        xcish[1,col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO1, SOMO2, v_orb] - rep_tens[o_orb, SOMO2, SOMO1, v_orb])
         xcish[col,1] = xcish[1,col]
-    #17 <ZW0|H|HL2>
+    #17 <ZW-|H|HL2>
     block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[1,col] = np.sqrt(3) * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+        xcish[1,col] = np.sqrt(1.5) * (rep_tens[o_orb, SOMO1, SOMO2, v_orb] + rep_tens[o_orb, SOMO2, SOMO1, v_orb])
         xcish[col,1] = xcish[1,col]
         
         
-    #18 <ZW0'|H|ZW0'>
-    xcish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
-    #19 <ZW0'|H|HS1>
+    #18 <ZW+|H|ZW+>
+    xcish[2,2] = energy0 + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
+    #19 <ZW+|H|HS1>
     block_index = 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[2,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
+        xcish[2,col] = rep_tens[o_orb,SOMO2,SOMO1,SOMO1] - 1.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2]
         xcish[col,2] = xcish[2,col]
-    #20 <ZW0'|H|HS2>
+    #20 <ZW+|H|HS2>
     block_index = ndocc + 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[2,col] = (-2 ** 0.5) * (rep_tens[o_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]) # CHECK SIGN
+        xcish[2,col] = 1.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] + 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1] - rep_tens[o_orb, SOMO1, SOMO2, SOMO2]
         xcish[col,2] = xcish[2,col]
-    #21 <ZW0'|H|SL1>
+    #21 <ZW0+|H|SL1>
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[2,col] = (-2 ** 0.5) * rep_tens[v_orb,SOMO2,SOMO2,SOMO1]
+        xcish[2,col] = 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] + 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - rep_tens[v_orb,SOMO2,SOMO1,SOMO1]
         xcish[col,2] = xcish[2,col]
-    #22 <ZW0'|H|SL2>
+    #22 <ZW0+|H|SL2>
     block_index = nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[2,col] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - rep_tens[v_orb,SOMO2,SOMO1,SOMO1]) # CHECK SIGN
+        xcish[2,col] = rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
         xcish[col,2] = xcish[2,col]
-    #23 <ZW0'|H|HL1>
+    #23 <ZW+|H|HL1>
     block_index = 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[2,col] = 2 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+        xcish[2,col] = (1/np.sqrt(2)) * (4 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO1, SOMO2, v_orb] - rep_tens[o_orb, SOMO2, SOMO1, v_orb])
         xcish[col,2] = xcish[2,col]
-    #24 <ZW0'|H|HL2>
+    #24 <ZW+|H|HL2>
     block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[2,col] = - np.sqrt(3) * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+        xcish[2,col] = np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, SOMO1, v_orb] - rep_tens[o_orb, SOMO1, SOMO2, v_orb])
         xcish[col,2] = xcish[2,col]
     
     
@@ -5482,7 +1177,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb] 
             xcish[col, row] = xcish[row,col]
     #28 <HS1|H|SL2>
     col_block_index = nvirt + 2 * ndocc + 3
@@ -5490,7 +1185,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
             xcish[col, row] = xcish[row,col]
     #29 <HS1|H|HL1>
     col_block_index = 2 * nvirt + 2 * ndocc + 3
@@ -5538,7 +1233,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] - 2 * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
             xcish[col, row] = xcish[row, col]
     #33 <HS2|H|SL2>
     col_block_index = nvirt + 2 * ndocc + 3
@@ -5546,7 +1241,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] - 2 * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
             xcish[col, row] = xcish[row,col]
     #34 <HS2|H|HL1>
     col_block_index = 2 * nvirt + 2 * ndocc + 3
@@ -5582,8 +1277,8 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         for col in range(row, col_block_index + nvirt):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
             else:    
                 xcish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
             xcish[col, row] = xcish[row,col]
@@ -5606,9 +1301,9 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             o_orb = (col - col_block_index) // nvirt
             v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb,SOMO2,v_orb1,v_orb1] + 1.5*rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 2*rep_tens[o_orb,v_orb1,v_orb1,SOMO2] - 0.5*rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
+                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] - rep_tens[o_orb, SOMO1, v_orb1, v_orb1] - 1.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1])
             else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
+                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb1, SOMO1, v_orb2, o_orb] - rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
     #39 <SL1|H|HL2>
     col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
@@ -5618,9 +1313,9 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             o_orb = (col - col_block_index) // nvirt
             v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1])
+                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] - rep_tens[o_orb, SOMO1, v_orb1, v_orb1])
             else:
-                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
+                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
     
     
@@ -5632,10 +1327,10 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         for col in range(row, col_block_index + nvirt):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
             else:    
-                xcish[row, col] = 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1]
+                xcish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
             xcish[col, row] = xcish[row,col]
     #41 <SL2|H|HL1>
     col_block_index = 2 * nvirt + 2 * ndocc + 3
@@ -5645,9 +1340,9 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             o_orb = (col - col_block_index) // nvirt
             v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] - rep_tens[o_orb, SOMO1, v_orb1, v_orb1] - 1.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1])
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb,SOMO2,v_orb1,v_orb1] + 1.5*rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 2*rep_tens[o_orb,v_orb1,v_orb1,SOMO2] - 0.5*rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
             else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb1, SOMO1, v_orb2, o_orb] - rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
             xcish[col,row] = xcish[row,col]
     #42 <SL2|H|HL2>
     col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
@@ -5657,9 +1352,9 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             o_orb = (col - col_block_index) // nvirt
             v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] - rep_tens[o_orb, SOMO1, v_orb1, v_orb1])
+                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1])
             else:
-                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
+                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
     
     
@@ -5740,13 +1435,13 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
     col_index = 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
     for col in range(col_index, col_index + nvirt):
         v_orb = col - col_index + (SOMO2 + 1)
-        xcish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
+        xcish[row_index, col] = - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1]
         xcish[col, row_index] = xcish[row_index,col]
     #50 <OS3|H|SL2>
     col_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
     for col in range(col_index, col_index + nvirt):
         v_orb = col - col_index + (SOMO2 + 1)
-        xcish[row_index, col] = - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1]
+        xcish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
         xcish[col, row_index] = xcish[row_index, col]
     #51 <OS3|H|HL1> = 0
     #52 <OS3|H|HL2>
@@ -5795,7 +1490,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb]
             xcish[col, row] = xcish[row,col]
     #57 <HS1|H|SL2>
     col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
@@ -5803,7 +1498,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
             xcish[col, row] = xcish[row,col]
     #58 <HS1|H|HL1>
     col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
@@ -5863,7 +1558,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] 
             xcish[col, row] = xcish[row,col]
     #63 <HS2|H|SL2>
     col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
@@ -5871,7 +1566,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
             xcish[col, row] = xcish[row,col]
     #64 <HS2|H|HL1>
     col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
@@ -5920,10 +1615,10 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         for col in range(row, col_block_index + nvirt):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
             else:    
-                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
+                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1]
             xcish[col, row] = xcish[row,col]
     #68 <SL1|H|SL2>
     col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
@@ -5944,64 +1639,12 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             o_orb = (col - col_block_index) // nvirt
             v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] - 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] \
-                                  - 2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO2])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
-            xcish[col,row] = xcish[row,col]
-    #70 <SL1|H|HL2>
-    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] + 1.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2])
-            else:
-                xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    #71 <SL1|H|HL3>
-    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1]
-            else:
-                xcish[row, col] = - rep_tens[o_orb, SOMO2, v_orb1, v_orb2]
-            xcish[col,row] = xcish[row,col]
-    
-    
-    row_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    #72 <SL2|H|SL2>
-    col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1]
-            xcish[col, row] = xcish[row,col]
-    #73 <SL2|H|HL1>
-    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
                 xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] \
                                   - rep_tens[o_orb, SOMO1, v_orb1, v_orb1])
             else:
                 xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb1, SOMO1, v_orb2, o_orb] - rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
-    #74 <SL2|H|HL2>
+    #70 <SL1|H|HL2>
     col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
     for row in range(row_block_index, row_block_index + nvirt):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
@@ -6013,7 +1656,7 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             else:
                 xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
-    #75 <SL2|H|HL3>
+    #71 <SL1|H|HL3>
     col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
     for row in range(row_block_index, row_block_index + nvirt):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
@@ -6025,6 +1668,58 @@ def hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             else:
                 xcish[row, col] = rep_tens[o_orb, SOMO1, v_orb1, v_orb2]
             xcish[col,row] = xcish[row,col]
+    
+    
+    row_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    #72 <SL2|H|SL2>
+    col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+            else:    
+                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
+            xcish[col, row] = xcish[row,col]
+    #73 <SL2|H|HL1>
+    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] - 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] \
+                                  - 2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO2])
+            else:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
+            xcish[col,row] = xcish[row,col]
+    #74 <SL2|H|HL2>
+    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] + 1.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2])
+            else:
+                xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
+            xcish[col,row] = xcish[row,col]
+    #75 <SL2|H|HL3>
+    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1]
+            else:
+                xcish[row, col] = - rep_tens[o_orb, SOMO2, v_orb1, v_orb2]
+            xcish[col,row] = xcish[row,col]  
     
     
     row_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
@@ -6188,11 +1883,11 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
     ################# SINGLET BLOCK ######################
     #1 <OS1|H|OS1>
     xcish[0,0] = energy0 - 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + (1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1])
-    #2 <OS1|H|ZW0>
-    xcish[0,1] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
+    #2 <OS1|H|ZW->
+    xcish[0,1] = (rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2])
     xcish[1,0] = xcish[0,1]
-    #3 <OS1|H|ZW0'>
-    xcish[0,2] = ((2 ** 0.5) / 2) * (rep_tens[SOMO1,SOMO2,SOMO2,SOMO2] - rep_tens[SOMO1,SOMO2,SOMO1,SOMO1])
+    #3 <OS1|H|ZW+>
+    xcish[0,2] = 0
     xcish[2,0] = xcish[0,2]
     #4 <OS1|H|HS1> 
     block_index = 3
@@ -6210,13 +1905,13 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
+        xcish[0,col] = 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
         xcish[col,0] = xcish[0,col]
     #7 <OS1|H|SL2>
     block_index = nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[0,col] = 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
+        xcish[0,col] = 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
         xcish[col,0] = xcish[0,col]
     #8 <OS1|H|HL1> = 0
     #9 <OS1|H|HL2>
@@ -6257,142 +1952,142 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
 
 
     
-    #10 <ZW0|H|ZW0>
-    xcish[1,1] = energy0 + orb_energies[SOMO1] - orb_energies[SOMO2] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
-    #11 <ZW0|H|ZW0'>
-    xcish[1,2] = rep_tens[SOMO1,SOMO2,SOMO2,SOMO1]
+    #10 <ZW-|H|ZW->
+    xcish[1,1] = energy0 + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
+    #11 <ZW-|H|ZW+>
+    xcish[1,2] = orb_energies[SOMO1] - orb_energies[SOMO2]
     xcish[2,1] = xcish[1,2]
-    #12 <ZW0|H|HS1>
+    #12 <ZW-|H|HS1>
     block_index = 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[1,col] = (2 ** 0.5) * (rep_tens[o_orb,SOMO2,SOMO1,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
+        xcish[1,col] = rep_tens[o_orb,SOMO2,SOMO1,SOMO1] + 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2]
         xcish[col,1] = xcish[1,col]
-    #13 <ZW0|H|HS2>
+    #13 <ZW-|H|HS2>
     block_index = ndocc + 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[1,col] = (2 ** 0.5) * rep_tens[o_orb,SOMO2,SOMO2,SOMO1]
+        xcish[1,col] = rep_tens[o_orb,SOMO1,SOMO2,SOMO2] + 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]
         xcish[col, 1] = xcish[1,col]
-    #14 <ZW0|H|SL1>
+    #14 <ZW-|H|SL1>
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[1,col] = (2 ** 0.5) * (rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1])
+        xcish[1,col] = rep_tens[v_orb,SOMO2,SOMO1,SOMO1] + 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2]
         xcish[col,1] = xcish[1,col]
-    #15 <ZW0|H|SL2>
+    #15 <ZW-|H|SL2>
     block_index = nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[1,col] = (2 ** 0.5) * rep_tens[v_orb,SOMO1,SOMO1,SOMO2]
+        xcish[1,col] = rep_tens[v_orb,SOMO1,SOMO2,SOMO2] + 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
         xcish[col,1] = xcish[1,col]
-    #16 <ZW0|H|HL1>
+    #16 <ZW-|H|HL1>
     block_index = 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[1,col] = 2 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+        xcish[1,col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO1, SOMO2, v_orb] - rep_tens[o_orb, SOMO2, SOMO1, v_orb])
         xcish[col,1] = xcish[1,col]
-    #17 <ZW0|H|HL2>
+    #17 <ZW-|H|HL2>
     block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[1,col] = np.sqrt(3) * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+        xcish[1,col] = np.sqrt(1.5) * (rep_tens[o_orb, SOMO1, SOMO2, v_orb] + rep_tens[o_orb, SOMO2, SOMO1, v_orb])
         xcish[col,1] = xcish[1,col]
-    #18 <ZW0|H|1^HSD>
+    #18 <ZW-|H|1^HSD>
     block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     o_orb1 = 0
     o_orb2 = 0
     for col in range(block_index, block_index + ndoc1):
         if o_orb1 == o_orb2:
-            xcish[1,col] = rep_tens[o_orb1, SOMO2, SOMO2, o_orb1]
+            xcish[1,col] = (1 / np.sqrt(2)) * (rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] - rep_tens[o_orb1, SOMO1, SOMO1, o_orb1])
         else:
-            xcish[1,col] = np.sqrt(2) * rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
+            xcish[1,col] = rep_tens[o_orb1, SOMO2, SOMO2, o_orb2] - rep_tens[o_orb1, SOMO1, SOMO1, o_orb2]
         xcish[col,1] = xcish[1,col]
         o_orb2 += 1
         if o_orb2 == ndocc:
             o_orb1 += 1
             o_orb2 = o_orb1
     
-    #11 <ZW0|H|1^SLD> # ONLY INCLUDING EXCITATIONS TO THE SAME VIRTUAL ORBITAL FOR NOW
+    #11 <ZW-|H|1^SLD> # ONLY INCLUDING EXCITATIONS TO THE SAME VIRTUAL ORBITAL FOR NOW
     block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     v_orb1 = SOMO2 + 1
     v_orb2 = SOMO2 + 1
     for col in range(block_index, block_index + ndcv1):
         if v_orb1 == v_orb2:
-            xcish[1,col] = rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
+            xcish[1,col] = (1 / np.sqrt(2)) * (rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] - rep_tens[v_orb1, SOMO2, SOMO2, v_orb1])
         else:
-            xcish[1,col] = np.sqrt(2) *rep_tens[v_orb1, SOMO1, SOMO1, v_orb2]
+            xcish[1,col] = rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
         xcish[col,1] = xcish[1,col]
         v_orb2 += 1
         if v_orb2 == norbs:
             v_orb1 += 1
             v_orb2 = v_orb1
         
-    #18 <ZW0'|H|ZW0'>
-    xcish[2,2] = energy0 + orb_energies[SOMO2] - orb_energies[SOMO1] + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
-    #19 <ZW0'|H|HS1>
+    #18 <ZW0+|H|ZW0+>
+    xcish[2,2] = energy0 + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) + 1.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
+    #19 <ZW0+|H|HS1>
     block_index = 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[2,col] = (-2 ** 0.5) * rep_tens[o_orb,SOMO1,SOMO1,SOMO2]
+        xcish[2,col] = rep_tens[o_orb,SOMO2,SOMO1,SOMO1] - 1.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO2]
         xcish[col,2] = xcish[2,col]
-    #20 <ZW0'|H|HS2>
+    #20 <ZW0+|H|HS2>
     block_index = ndocc + 3
     for col in range(block_index, block_index + ndocc):
         o_orb = col - block_index
-        xcish[2,col] = (-2 ** 0.5) * (rep_tens[o_orb,SOMO1,SOMO2,SOMO2] - 0.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1]) # CHECK SIGN
+        xcish[2,col] = 1.5 * rep_tens[o_orb,SOMO2,SOMO2,SOMO1] + 0.5 * rep_tens[o_orb,SOMO1,SOMO1,SOMO1] - rep_tens[o_orb,SOMO1,SOMO2,SOMO2]
         xcish[col,2] = xcish[2,col]
-    #21 <ZW0'|H|SL1>
+    #21 <ZW0+|H|SL1>
     block_index = 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[2,col] = (-2 ** 0.5) * rep_tens[v_orb,SOMO2,SOMO2,SOMO1]
+        xcish[2,col] = 1.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] + 0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] - rep_tens[v_orb,SOMO2,SOMO1,SOMO1]
         xcish[col,2] = xcish[2,col]
-    #22 <ZW0'|H|SL2>
+    #22 <ZW0+|H|SL2>
     block_index = nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + nvirt):
         v_orb = col - block_index + (SOMO2 + 1)
-        xcish[2,col] = (2 ** 0.5) * (0.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO2] + 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO2] - rep_tens[v_orb,SOMO2,SOMO1,SOMO1]) # CHECK SIGN
+        xcish[2,col] = rep_tens[v_orb,SOMO1,SOMO2,SOMO2] - 1.5 * rep_tens[v_orb,SOMO2,SOMO2,SOMO1] - 0.5 * rep_tens[v_orb,SOMO1,SOMO1,SOMO1]
         xcish[col,2] = xcish[2,col]
-    #23 <ZW0'|H|HL1>
+    #23 <ZW0+|H|HL1>
     block_index = 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[2,col] = 2 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+        xcish[2,col] = (1 / np.sqrt(2)) * (4 * rep_tens[o_orb, v_orb, SOMO1, SOMO2] - rep_tens[o_orb, SOMO1, SOMO2, v_orb] - rep_tens[o_orb, SOMO2, SOMO1, v_orb])
         xcish[col,2] = xcish[2,col]
-    #24 <ZW0'|H|HL2>
+    #24 <ZW0+|H|HL2>
     block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     for col in range(block_index, block_index + (ndocc * nvirt)):
         o_orb = (col - block_index) // nvirt
         v_orb = (col - block_index) % nvirt + (SOMO2 + 1)
-        xcish[2,col] = - np.sqrt(3) * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+        xcish[2,col] = np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, SOMO1, v_orb] - rep_tens[o_orb, SOMO1, SOMO2, v_orb])
         xcish[col,2] = xcish[2,col]
-    #25 <ZW0'|H|1^HSD>
+    #25 <ZW0+|H|1^HSD>
     block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     o_orb1 = 0
     o_orb2 = 0
     for col in range(block_index, block_index + ndoc1):
         if o_orb1 == o_orb2:
-            xcish[2,col] = rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
+            xcish[2,col] = (1 / np.sqrt(2)) * (rep_tens[o_orb1, SOMO1, SOMO1, o_orb1] + rep_tens[o_orb1, SOMO2, SOMO2, o_orb1])
         else:
-            xcish[2,col] = np.sqrt(2) * rep_tens[o_orb1, SOMO1, SOMO1, o_orb2]
+            xcish[2,col] = rep_tens[o_orb1, SOMO1, SOMO1, o_orb2] + rep_tens[o_orb1, SOMO2, SOMO2, o_orb2]
         xcish[col,2] = xcish[2,col]
         o_orb2 += 1
         if o_orb2 == ndocc:
             o_orb1 += 1
             o_orb2 = o_orb1
-    #11 <ZW0'|H|1^SLD> 
+    #11 <ZW0+|H|1^SLD> 
     block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     v_orb1 = SOMO2 + 1
     v_orb2 = SOMO2 + 1
     for col in range(block_index, block_index + ndcv1):
         if v_orb1 == v_orb2:
-            xcish[2,col] = rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+            xcish[2,col] = (1 / np.sqrt(2)) * (rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + rep_tens[v_orb1, SOMO1, SOMO1, v_orb1])
         else:
-            xcish[2,col] = np.sqrt(2) * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
+            xcish[2,col] = rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] + rep_tens[v_orb1, SOMO1, SOMO1, v_orb2]
         xcish[col,2] = xcish[2,col]
         v_orb2 += 1
         if v_orb2 == norbs:
@@ -6411,7 +2106,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
                 xcish[row, col] = energy0 + orb_energies[SOMO1] - orb_energies[o_orb1] - rep_tens[o_orb1, o_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
                              - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb1] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb1]
             else:    
-                xcish[row, col] = xcish[row, col] = 0.5 * rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]
+                xcish[row, col] = 0.5 * rep_tens[o_orb2, SOMO1, SOMO1, o_orb1] + 1.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb1] - rep_tens[o_orb2, o_orb1, SOMO1, SOMO1]
             xcish[col, row] = xcish[row,col]
     #26 <HS1|H|HS2>
     col_block_index = ndocc + 3
@@ -6430,7 +2125,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb] 
             xcish[col, row] = xcish[row,col]
     #28 <HS1|H|SL2>
     col_block_index = nvirt + 2 * ndocc + 3
@@ -6438,7 +2133,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO1, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO2, v_orb] - 2 * rep_tens[o_orb, SOMO2, SOMO1, v_orb]
             xcish[col, row] = xcish[row,col]
     #29 <HS1|H|HL1>
     col_block_index = 2 * nvirt + 2 * ndocc + 3
@@ -6508,7 +2203,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] - 2 * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
             xcish[col, row] = xcish[row, col]
     #33 <HS2|H|SL2>
     col_block_index = nvirt + 2 * ndocc + 3
@@ -6516,7 +2211,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] - 2 * rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
             xcish[col, row] = xcish[row,col]
     #34 <HS2|H|HL1>
     col_block_index = 2 * nvirt + 2 * ndocc + 3
@@ -6565,7 +2260,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
                 o_orb2 += 1
                 o_orb3 = o_orb2
     #<HS2|H|1^SLD> = 0
-
+    
     
     row_block_index = 2 * ndocc + 3
     #36 <SL1|H|SL1>
@@ -6575,8 +2270,8 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         for col in range(row, col_block_index + nvirt):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
             else:    
                 xcish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
             xcish[col, row] = xcish[row,col]
@@ -6599,75 +2294,11 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             o_orb = (col - col_block_index) // nvirt
             v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb,SOMO2,v_orb1,v_orb1] + 1.5*rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 2*rep_tens[o_orb,v_orb1,v_orb1,SOMO2] - 0.5*rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
-            xcish[col,row] = xcish[row,col]
-    #39 <SL1|H|HL2>
-    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1])
-            else:
-                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    #<SL1|H|1^HSD> = 0
-    #<SL1|H|1^SLD>
-    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        v_orb2 = SOMO2 + 1
-        v_orb3 = SOMO2 + 1
-        for col in range(col_block_index, col_block_index + ndcv1):
-            if v_orb2 == v_orb3:
-                if v_orb1 == v_orb2:
-                    xcish[row, col] = np.sqrt(2) * (rep_tens[v_orb1, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb1, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, SOMO1])
-                else:
-                    xcish[row, col] = - np.sqrt(2) * rep_tens[v_orb2, SOMO1, v_orb2, v_orb1]            
-            else:
-                if v_orb1 == v_orb2:
-                    xcish[row, col] = rep_tens[v_orb3, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb1] - rep_tens[SOMO1, v_orb1, v_orb1, v_orb3] + 0.5 * rep_tens[v_orb3, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb3, SOMO2, SOMO2, SOMO1]
-                elif v_orb1 == v_orb3:
-                    xcish[row, col] = rep_tens[v_orb2, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb2, SOMO1, v_orb1, v_orb1] - rep_tens[SOMO1, v_orb1, v_orb1, v_orb2] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb2, SOMO2, SOMO2, SOMO1]
-                else:
-                    xcish[row, col] = - rep_tens[v_orb2, SOMO1, v_orb1, v_orb3] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb2]
-            xcish[col,row] = xcish[row,col]
-            v_orb3 += 1
-            if v_orb3 == norbs:
-                v_orb2 += 1
-                v_orb3 = v_orb2
-    
-    
-    row_block_index = nvirt + 2 * ndocc + 3
-    #40 <SL2|H|SL2>
-    col_block_index = nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] + 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                xcish[row, col] = 1.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1]
-            xcish[col, row] = xcish[row,col]
-    #41 <SL2|H|HL1>
-    col_block_index = 2 * nvirt + 2 * ndocc + 3
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
                 xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] - rep_tens[o_orb, SOMO1, v_orb1, v_orb1] - 1.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1])
             else:
                 xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb1, SOMO1, v_orb2, o_orb] - rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
-    #42 <SL2|H|HL2>
+    #39 <SL1|H|HL2>
     col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     for row in range(row_block_index, row_block_index + nvirt):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
@@ -6679,8 +2310,8 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             else:
                 xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
-    #<SL2|H|1^HSD> = 0
-    #<SL2|H|1^SLD>
+    #<SL1|H|1^HSD> = 0
+    #<SL1|H|1^SLD>
     col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
     for row in range(row_block_index, row_block_index + nvirt):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
@@ -6691,7 +2322,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
                 if v_orb1 == v_orb2:
                     xcish[row, col] = np.sqrt(2) * (rep_tens[v_orb1, v_orb1, v_orb1, SOMO2] - rep_tens[v_orb1, SOMO2, SOMO1, SOMO1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, SOMO2])
                 else:
-                    xcish[row, col] = np.sqrt(2) * rep_tens[v_orb2, SOMO2, v_orb2, v_orb1]            
+                    xcish[row, col] = np.sqrt(2) * rep_tens[v_orb2, SOMO2, v_orb2, v_orb1] 
             else:
                 if v_orb1 == v_orb2:
                     xcish[row, col] = rep_tens[v_orb3, SOMO2, v_orb1, v_orb1] + rep_tens[SOMO2, v_orb1, v_orb1, v_orb3] - rep_tens[v_orb3, SOMO2, SOMO1, SOMO1] + 0.5 * rep_tens[v_orb3, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[v_orb3, SOMO2, SOMO2, SOMO2]
@@ -6699,6 +2330,71 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
                     xcish[row, col] = rep_tens[v_orb2, SOMO2, v_orb1, v_orb1] + rep_tens[SOMO2, v_orb1, v_orb1, v_orb2] - rep_tens[v_orb2, SOMO2, SOMO1, SOMO1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[v_orb2, SOMO2, SOMO2, SOMO2]
                 else:
                     xcish[row, col] = rep_tens[v_orb2, SOMO2, v_orb1, v_orb3] + rep_tens[v_orb3, SOMO2, v_orb1, v_orb2]
+            xcish[col,row] = xcish[row,col]
+            v_orb3 += 1
+            if v_orb3 == norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2
+    
+    
+    
+    row_block_index = nvirt + 2 * ndocc + 3
+    #40 <SL2|H|SL2>
+    col_block_index = nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] + 1.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+            else:    
+                xcish[row, col] = 1.5 * rep_tens[v_orb2, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, v_orb1] -  rep_tens[v_orb2, v_orb1, SOMO2, SOMO2]
+            xcish[col, row] = xcish[row,col]
+    #41 <SL2|H|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb,SOMO2,v_orb1,v_orb1] + 1.5*rep_tens[o_orb,SOMO1,SOMO1,SOMO2] - 2*rep_tens[o_orb,v_orb1,v_orb1,SOMO2] - 0.5*rep_tens[o_orb,SOMO2,SOMO2,SOMO2])
+            else:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
+            xcish[col,row] = xcish[row,col]
+    #42 <SL2|H|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = np.sqrt(1.5) * (0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1])
+            else:
+                xcish[row, col] = - np.sqrt(1.5) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
+            xcish[col,row] = xcish[row,col]
+    #<SL2|H|1^HSD> = 0
+    #<SL2|H|1^SLD>
+    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 1
+        for col in range(col_block_index, col_block_index + ndcv1):
+            if v_orb2 == v_orb3:
+                if v_orb1 == v_orb2:
+                    xcish[row, col] = np.sqrt(2) * (rep_tens[v_orb1, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb1, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, SOMO1])
+                else:
+                    xcish[row, col] = - np.sqrt(2) * rep_tens[v_orb2, SOMO1, v_orb2, v_orb1] 
+            else:
+                if v_orb1 == v_orb2:
+                    xcish[row, col] = rep_tens[v_orb3, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb1] - rep_tens[SOMO1, v_orb1, v_orb1, v_orb3] + 0.5 * rep_tens[v_orb3, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb3, SOMO2, SOMO2, SOMO1]
+                elif v_orb1 == v_orb3:
+                    xcish[row, col] = rep_tens[v_orb2, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb2, SOMO1, v_orb1, v_orb1] - rep_tens[SOMO1, v_orb1, v_orb1, v_orb2] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb2, SOMO2, SOMO2, SOMO1]
+                else:
+                    xcish[row, col] = - rep_tens[v_orb2, SOMO1, v_orb1, v_orb3] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb2]
             xcish[col,row] = xcish[row,col]
             v_orb3 += 1
             if v_orb3 == norbs:
@@ -6973,13 +2669,13 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
     col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
     for col in range(col_index, col_index + nvirt):
         v_orb = col - col_index + (SOMO2 + 1)
-        xcish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
+        xcish[row_index, col] = - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1]
         xcish[col, row_index] = xcish[row_index,col]
     #50 <OS3|H|SL2>
     col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
     for col in range(col_index, col_index + nvirt):
         v_orb = col - col_index + (SOMO2 + 1)
-        xcish[row_index, col] = - 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO1]
+        xcish[row_index, col] = 0.5 * rep_tens[v_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[v_orb, SOMO2, SOMO2, SOMO2]
         xcish[col, row_index] = xcish[row_index, col]
     #51 <OS3|H|HL1> = 0
     #52 <OS3|H|HL2>
@@ -7050,7 +2746,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb]
             xcish[col, row] = xcish[row,col]
     #57 <HS1|H|SL2>
     col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
@@ -7058,7 +2754,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO1, SOMO1, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO1, SOMO2, v_orb]
             xcish[col, row] = xcish[row,col]
     #58 <HS1|H|HL1>
     col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
@@ -7136,7 +2832,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
+            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb] 
             xcish[col, row] = xcish[row,col]
     #63 <HS2|H|SL2>
     col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
@@ -7144,7 +2840,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         o_orb = row - row_block_index
         for col in range(col_block_index, col_block_index + nvirt):
             v_orb = col - col_block_index + (SOMO2 + 1)
-            xcish[row, col] = rep_tens[o_orb, SOMO2, SOMO1, v_orb]
+            xcish[row, col] = - rep_tens[o_orb, SOMO2, SOMO2, v_orb]
             xcish[col, row] = xcish[row,col]
     #64 <HS2|H|HL1>
     col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
@@ -7202,7 +2898,8 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
                 o_orb2 += 1
                 o_orb3 = o_orb2 + 1
     # <HS2|H|3^SLD> = 0
-            
+    
+    
     row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
     #67 <SL1|H|SL1>
     col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
@@ -7211,10 +2908,10 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
         for col in range(row, col_block_index + nvirt):
             v_orb2 = col - col_block_index + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
-                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
+                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
             else:    
-                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
+                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1]
             xcish[col, row] = xcish[row,col]
     #68 <SL1|H|SL2>
     col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
@@ -7235,82 +2932,12 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             o_orb = (col - col_block_index) // nvirt
             v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] - 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] \
-                                  - 2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO2])
-            else:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
-            xcish[col,row] = xcish[row,col]
-    #70 <SL1|H|HL2>
-    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] + 1.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2])
-            else:
-                xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
-            xcish[col,row] = xcish[row,col]
-    #71 <SL1|H|HL3>
-    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1]
-            else:
-                xcish[row, col] = - rep_tens[o_orb, SOMO2, v_orb1, v_orb2]
-            xcish[col,row] = xcish[row,col]
-    # <SL1|H|3^HSD> = 0
-    # <SL1|H|3^SLD>
-    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        v_orb2 = SOMO2 + 1
-        v_orb3 = SOMO2 + 2
-        for col in range(col_block_index, col_block_index + ndcv3):
-            if v_orb1 == v_orb2:
-                xcish[row, col] = rep_tens[v_orb3, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb1] + rep_tens[SOMO1, v_orb1, v_orb1, v_orb3] + 0.5 * rep_tens[v_orb3, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb3, SOMO2, SOMO2, SOMO1]
-            elif v_orb1 == v_orb3:
-                xcish[row, col] = rep_tens[v_orb2, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb2, SOMO1, v_orb1, v_orb1] + rep_tens[SOMO1, v_orb1, v_orb1, v_orb2] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb2, SOMO2, SOMO2, SOMO1]
-            else:
-                xcish[row, col] = rep_tens[v_orb2, SOMO1, v_orb1, v_orb3] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb2]
-            xcish[col,row] = xcish[row,col]
-            v_orb3 += 1
-            if v_orb3 >= norbs:
-                v_orb2 += 1
-                v_orb3 = v_orb2 + 1
-    
-    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    #72 <SL2|H|SL2>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(row, col_block_index + nvirt):
-            v_orb2 = col - col_block_index + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
-                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO1] - rep_tens[v_orb1, v_orb1, SOMO1, SOMO1] + 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] \
-                             - 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1]
-            else:    
-                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO1, SOMO1]
-            xcish[col, row] = xcish[row,col]
-    #73 <SL2|H|HL1>
-    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
-    for row in range(row_block_index, row_block_index + nvirt):
-        v_orb1 = row - row_block_index + (SOMO2 + 1)
-        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
-            o_orb = (col - col_block_index) // nvirt
-            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
-            if v_orb1 == v_orb2:
                 xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO1] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO1] + 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO1] \
                                   - rep_tens[o_orb, SOMO1, v_orb1, v_orb1])
             else:
                 xcish[row, col] = (1 / np.sqrt(2)) * (2 * rep_tens[v_orb1, SOMO1, v_orb2, o_orb] - rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
-    #74 <SL2|H|HL2>
+    #70 <SL1|H|HL2>
     col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
     for row in range(row_block_index, row_block_index + nvirt):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
@@ -7322,7 +2949,7 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             else:
                 xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO1, v_orb1, v_orb2])
             xcish[col,row] = xcish[row,col]
-    #75 <SL2|H|HL3>
+    #71 <SL1|H|HL3>
     col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
     for row in range(row_block_index, row_block_index + nvirt):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
@@ -7334,8 +2961,8 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
             else:
                 xcish[row, col] = rep_tens[o_orb, SOMO1, v_orb1, v_orb2]
             xcish[col,row] = xcish[row,col]
-    # <SL2|H|3^HSD> = 0
-    # <SL2|H|3^SLD>
+    # <SL1|H|3^HSD> = 0
+    # <SL1|H|3^SLD>
     col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
     for row in range(row_block_index, row_block_index + nvirt):
         v_orb1 = row - row_block_index + (SOMO2 + 1)
@@ -7348,6 +2975,77 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
                 xcish[row, col] = - (rep_tens[v_orb2, SOMO2, SOMO1, SOMO1] - rep_tens[v_orb2, SOMO2, v_orb1, v_orb1] + rep_tens[SOMO2, v_orb1, v_orb1, v_orb2] + 0.5 * rep_tens[v_orb2, SOMO2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, SOMO2])
             else:
                 xcish[row, col] = rep_tens[v_orb3, SOMO2, v_orb1, v_orb2] - rep_tens[v_orb2, SOMO2, v_orb1, v_orb3]
+            xcish[col,row] = xcish[row,col]
+            v_orb3 += 1
+            if v_orb3 >= norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2 + 1
+    
+    
+    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    #72 <SL2|H|SL2>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = energy0 + orb_energies[v_orb1] - orb_energies[SOMO2] - rep_tens[v_orb1, v_orb1, SOMO2, SOMO2] + 0.25 * rep_tens[SOMO2, SOMO2, SOMO2, SOMO2] \
+                             - 0.25 * rep_tens[SOMO1, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb1] + 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb1]
+            else:    
+                xcish[row, col] =  0.5 * rep_tens[v_orb1, SOMO1, SOMO1, v_orb2] - rep_tens[v_orb1, v_orb2, SOMO2, SOMO2] - 0.5 * rep_tens[v_orb1, SOMO2, SOMO2, v_orb2]
+            xcish[col, row] = xcish[row,col]
+    #73 <SL2|H|HL1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] - 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] \
+                                  - 2 * rep_tens[o_orb, v_orb1, v_orb1, SOMO2])
+            else:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2] - 2 * rep_tens[v_orb1, SOMO2, v_orb2, o_orb])
+            xcish[col,row] = xcish[row,col]
+    #74 <SL2|H|HL2>
+    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb1] + 1.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] - 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2])
+            else:
+                xcish[row, col] = - (1 / np.sqrt(2)) * (rep_tens[o_orb, SOMO2, v_orb1, v_orb2])
+            xcish[col,row] = xcish[row,col]
+    #75 <SL2|H|HL3>
+    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                xcish[row, col] = 0.5 * rep_tens[o_orb, SOMO1, SOMO1, SOMO2] + 0.5 * rep_tens[o_orb, SOMO2, SOMO2, SOMO2] - rep_tens[o_orb, SOMO2, v_orb1, v_orb1]
+            else:
+                xcish[row, col] = - rep_tens[o_orb, SOMO2, v_orb1, v_orb2]
+            xcish[col,row] = xcish[row,col]    
+    # <SL2|H|3^HSD> = 0
+    # <SL2|H|3^SLD>
+    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 2
+        for col in range(col_block_index, col_block_index + ndcv3):
+            if v_orb1 == v_orb2:
+                xcish[row, col] = rep_tens[v_orb3, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb1] + rep_tens[SOMO1, v_orb1, v_orb1, v_orb3] + 0.5 * rep_tens[v_orb3, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb3, SOMO2, SOMO2, SOMO1]
+            elif v_orb1 == v_orb3:
+                xcish[row, col] = rep_tens[v_orb2, SOMO1, SOMO2, SOMO2] - rep_tens[v_orb2, SOMO1, v_orb1, v_orb1] + rep_tens[SOMO1, v_orb1, v_orb1, v_orb2] + 0.5 * rep_tens[v_orb2, SOMO1, SOMO1, SOMO1] - 0.5 * rep_tens[v_orb2, SOMO2, SOMO2, SOMO1]
+            else:
+                xcish[row, col] = rep_tens[v_orb2, SOMO1, v_orb1, v_orb3] - rep_tens[v_orb3, SOMO1, v_orb1, v_orb2]
             xcish[col,row] = xcish[row,col]
             v_orb3 += 1
             if v_orb3 >= norbs:
@@ -7655,6 +3353,2377 @@ def hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens):
 
 
 
+
+
+
+def dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates):
+    '''
+    Routine to calculate the one electron dipole moment matrix (x, y and z) in the basis of orbitals, 
+    and then the dipole moment matrix in the basis of csfs.
+    
+    '''
+    natoms = coords.shape[0]
+    print("Calculating dipole moments ...\n")
+    dip1el = cartesian_operators(coords,hf_orbs)[0]
+    SOMO1 = ndocc
+    SOMO2 = ndocc + 1
+    nvirt = norbs - ndocc - 2
+
+   # print("x norm= %f"%linalg.norm(dip1el[:,:,0] - dip1el[:,:,0].T))  # checking symmetric
+   # print("y norm= %f"%linalg.norm(dip1el[:,:,1] - dip1el[:,:,1].T))
+   # print("z norm= %f"%linalg.norm(dip1el[:,:,2] - dip1el[:,:,2].T))
+   # print(" ")
+    dipoles = np.zeros((nstates,nstates,3)) 
+
+    #1 <OS1|mu|OS1>
+    for o in range(ndocc):
+        dipoles[0,0,:] -= 2*dip1el[o,o,:]
+    dipoles[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
+    #2 <OS1|mu|ZW-> 
+    dipoles[0,1,:] = 0
+    dipoles[1,0,:] = dipoles[0,1,:] 
+    #3 <OS1|mu|ZW+> 
+    dipoles[0,2,:] = - 2 * dip1el[SOMO1,SOMO2,:]
+    dipoles[2,0,:] = dipoles[0,2,:] 
+    #4 <OS1|mu|HS1> 
+    block_index = 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[0,col,:] = dip1el[o_orb, SOMO1, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #5 <OS1|mu|HS2> 
+    block_index = ndocc + 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[0,col,:] = - dip1el[o_orb, SOMO2, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #6 <OS1|mu|SL1> 
+    block_index = 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[0,col,:] = -dip1el[v_orb, SOMO1, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #7 <OS1|mu|SL2> 
+    block_index = nvirt + 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[0,col,:] = dip1el[v_orb, SOMO2, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #8 <OS1|mu|HL1>
+    block_index = 2 * nvirt + 2 * ndocc + 3
+    for col in range(block_index, block_index + (ndocc * nvirt)):
+        o_orb = (col - block_index) // nvirt # Increase o_orb after every ndocc cols
+        v_orb = (col - block_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
+        dipoles[0,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #9 <OS1|mu|HL2>=0
+    
+    
+    #10 <ZW-|mu|ZW->
+    for o in range(ndocc):
+        dipoles[1,1,:] -= 2*dip1el[o,o,:]
+    dipoles[1,1,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
+    #11 <ZW-|mu|ZW+>
+    dipoles[1,2,:] = - (dip1el[SOMO1,SOMO1,:] - dip1el[SOMO2,SOMO2,:])
+    dipoles[2,1,:] = dipoles[1,2,:]
+    #12 <ZW-|mu|HS1>
+    block_index = 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[1,col,:] = - dip1el[o_orb, SOMO2, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #13 <ZW-|mu|HS2>
+    block_index = ndocc + 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[1,col,:] = - dip1el[o_orb, SOMO1, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #14 <ZW-|mu|SL1> 
+    block_index = 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[1,col,:] = dip1el[v_orb, SOMO1, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #15 <ZW-|mu|SL2>
+    block_index = 3 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[1,col,:] = dip1el[v_orb, SOMO2, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #16 <ZW-|mu|HL1> = 0
+    #17 <ZW-|mu|HL2> = 0
+    
+    
+    #18 <ZW+|mu|ZW+>
+    for o in range(ndocc):
+        dipoles[2,2,:] -= 2*dip1el[o,o,:]
+    dipoles[2,2,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
+    #19 <ZW+|mu|HS1>
+    block_index = 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[2,col,:] = - dip1el[o_orb, SOMO2, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #20 <ZW+|mu|HS2>
+    block_index = ndocc + 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[2,col,:] = dip1el[o_orb, SOMO1, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #21 <ZW+|mu|SL1>
+    block_index = 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[2,col,:] = dip1el[v_orb, SOMO1, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #22 <ZW+|mu|SL2>
+    block_index = nvirt + 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[2,col,:] = - dip1el[v_orb, SOMO2, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #23 <ZW+|mu|HL1> = 0
+    #24 <ZW+|mu|HL2> = 0
+    
+    
+    row_block_index = 3
+    #25 <HS1|mu|HS1>
+    col_block_index = 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
+            dipoles[col,row,:] = dipoles[row,col,:] 
+    #26 <HS1|mu|HS2>
+    col_block_index = ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
+                dipoles[col,row,:] = dipoles[row,col, :]
+    #27 <HS1|mu|SL1> = 0
+    #28 <HS1|mu|SL2> = 0
+    #29 <HS1|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #30 <HS1|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+
+
+    row_block_index = ndocc + 3
+    #31 <HS2|mu|HS2>
+    col_block_index = ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #32 <HS2|mu|SL1> = 0
+    #33 <HS2|mu|SL2> = 0
+    #34 <HS2|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #35 <HS2|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+
+    
+    row_block_index = 2 * ndocc + 3
+    #36 <SL1|mu|SL1>
+    col_block_index = 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #37 <SL1|mu|SL2>
+    col_block_index = nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row,col,:] = dip1el[SOMO2,SOMO1,:]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #38 <SL1|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #39 <SL1|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+
+
+    row_block_index = nvirt + 2 * ndocc + 3
+    #40 <SL2|mu|SL2>
+    col_block_index = nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #41 <SL2|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #42 <SL2|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    
+    
+    row_block_index = 2 * nvirt + 2 * ndocc + 3
+    #43 <HL1|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #44 <HL1|mu|HL2> = 0
+
+
+    row_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    #43 <HL2|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    
+    
+    
+
+################# TRIPLET BLOCK ######################
+
+    row_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    #46 <OS3|mu|OS3>
+    for o in range(ndocc):
+        dipoles[row_index,row_index,:] -= 2*dip1el[o,o,:]
+    dipoles[row_index,row_index,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
+    #47 <OS3|mu|HS1>
+    col_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
+    for col in range(col_index, col_index + ndocc):
+        o_orb = col - col_index
+        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO1,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #48 <OS3|mu|HS2>
+    col_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    for col in range(col_index, col_index + ndocc):
+        o_orb = col - col_index
+        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO2,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #49 <OS3|mu|SL1>
+    col_index = 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
+    for col in range(col_index, col_index + nvirt):
+        v_orb = col - col_index + (SOMO2 + 1)
+        dipoles[row_index,col,:] = -dip1el[v_orb,SOMO1,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #50 <OS3|mu|SL2>
+    col_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for col in range(col_index, col_index + nvirt):
+        v_orb = col - col_index + (SOMO2 + 1)
+        dipoles[row_index,col,:] = dip1el[v_orb,SOMO2,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #51 <OS3|mu|HL1>
+    col_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for col in range(col_index, col_index + (ndocc * nvirt)):
+        o_orb = (col - col_index) // nvirt # Increase o_orb after every nvirt cols
+        v_orb = (col - col_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
+        dipoles[row_index,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #52 <OS3|mu|HL2> = 0
+    #53 <OS3|mu|HL3> = 0
+    
+
+    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
+    #54 <HS1|H|HS1>
+    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
+            dipoles[col,row,:] = dipoles[row,col,:] 
+    #55 <HS1|mu|HS2>
+    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #56 <HS1|mu|SL1> = 0
+    #57 <HS1|mu|SL2> = 0
+    #58 <HS1|mu|HL1>
+    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #59 <HS1|mu|HL2>
+    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #60 <HS1|mu|HL3>
+    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+
+
+    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    #61 <HS2|mu|HS2>
+    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #62 <HS2|mu|SL1> = 0
+    #63 <HS2|mu|SL2> = 0
+    #64 <HS2|mu|HL1>
+    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #65 <HS2|mu|HL2>
+    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #65 <HS2|mu|HL3>
+    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+
+
+    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
+    #66 <SL1|mu|SL1>
+    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #67 <SL1|mu|SL2>
+    col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1,SOMO2,:]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #68 <SL1|mu|HL1>
+    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #69 <SL1|mu|HL2>
+    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #70 <SL1|mu|HL3>
+    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+ 
+    
+    row_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    #71 <SL2|H|SL2>
+    col_block_index = 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #72 <SL2|mu|HL1>
+    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #73 <SL2|mu|HL2>
+    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #74 <SL2|mu|HL3>
+    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    
+    
+    row_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #75 <HL1|mu|HL1>
+    col_block_index = 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #76 <HL1|mu|HL2> = 0
+    #77 <HL1|mu|HL3> = 0
+    
+    
+    row_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #78 <HL2|mu|HL2>
+    col_block_index = 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #79 <HL2|mu|HL3> = 0
+
+
+    row_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #80 <HL3|mu|HL3>
+    col_block_index = 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    
+    
+    row_block_index = 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #81 <DQ|mu|DQ>
+    col_block_index = 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+        
+    #print("%10.5f"%linalg.norm(dipoles[:,:,0] - dipoles[:,:,0].T))  # checking symmetric
+    #print("%10.5f"%linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
+    #print("%10.5f"%linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))   
+
+    OS1_perm_dip=dipoles[0,0,:]
+    ZWminus_perm_dip=dipoles[1,1,:]
+    ZWplus_perm_dip=dipoles[2,2,:]
+    OS3_perm_dip=dipoles[2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3,2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3,:]
+    for dipole in [OS1_perm_dip, ZWminus_perm_dip, ZWplus_perm_dip, OS3_perm_dip]:
+        for i in range(natoms):
+            atom_z=0
+            if atoms[i][0] in ['C','c','n1','N1']:
+                atom_z=1
+            elif atoms[i][0] in ['Cl','cl','CL','N2','n2']:
+                atom_z=2   
+            # for x in range(3):
+            #     perm_dip[x]+=atom_z*coords[i,x]*tobohr
+            dipole[:]+=atom_z*coords[i,:]*tobohr
+    print(f"Permanent dipole moment of reference states:\n \
+            Open-Shell Singlet (|OS1>) = {OS1_perm_dip[0]:.3f} x {OS1_perm_dip[1]:.3f} y {OS1_perm_dip[2]:.3f} z\n \
+            Zwitterion - (|ZW->) = {ZWminus_perm_dip[0]:.3f} x {ZWminus_perm_dip[1]:.3f} y {ZWminus_perm_dip[2]:.3f} z\n \
+            Zwitterion + (|ZW+>) = {ZWplus_perm_dip[0]:.3f} x {ZWplus_perm_dip[1]:.3f} y {ZWplus_perm_dip[2]:.3f} z\n \
+            Open-Shell Triplet (|OS3>) = {OS3_perm_dip[0]:.3f} x {OS3_perm_dip[1]:.3f} y {OS3_perm_dip[2]:.3f} z\n")
+    return dipoles
+
+def dipole_xcisd(coords,atoms,norbs,hf_orbs,ndocc,nstates):
+    '''
+    Routine to calculate the one electron dipole moment matrix (x, y and z) in the basis of orbitals, 
+    and then the dipole moment matrix in the basis of csfs.
+    
+    '''
+    natoms = coords.shape[0]
+    print("Calculating dipole moments ...\n")
+    dip1el = cartesian_operators(coords,hf_orbs)[0]
+    SOMO1 = ndocc # Index of SOMO1
+    SOMO2 = ndocc + 1 # Index of SOMO2
+    nvirt = norbs - ndocc - 2 # Number of virtual orbitals
+    ndoc3 = int((ndocc ** 2 - ndocc) / 2) # Number of doubly excited occupied to core triplet CSFs
+    ndoc1 = int((ndocc ** 2 + ndocc) / 2) # Number of doubly excited occupied to core singlet CSFs
+    ndcv3 = int((nvirt ** 2 - nvirt) / 2) # Number of doubly excited occupied to core triplet CSFs
+    ndcv1 = int((nvirt ** 2 + nvirt) / 2) # Number of doubly excited occupied to core singlet CSFs
+    nstates = nvirt ** 2 + ndocc ** 2 + 6 * (ndocc * nvirt) + 4 * ndocc + 4 * nvirt + 4  # nvirt ** 2 doubles (SOMO to LUMO), ndocc ** 2 doubles (HOMO to SOMO), 6 * ndocc * nvirt doubles (HOMO to LUMO), 4 * ndocc singles (HOMO to SOMO), 4 * nvirt singles (SOMO to LUMO)
+                                                                                         # and 4 reference configurations (OS GSs and Zwitterions)
+
+   # print("x norm= %f"%linalg.norm(dip1el[:,:,0] - dip1el[:,:,0].T))  # checking symmetric
+   # print("y norm= %f"%linalg.norm(dip1el[:,:,1] - dip1el[:,:,1].T))
+   # print("z norm= %f"%linalg.norm(dip1el[:,:,2] - dip1el[:,:,2].T))
+   # print(" ")
+    dipoles = np.zeros((nstates,nstates,3)) 
+
+    #1 <OS1|mu|OS1>
+    for o in range(ndocc):
+        dipoles[0,0,:] -= 2*dip1el[o,o,:]
+    dipoles[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
+    #2 <OS1|mu|ZW-> 
+    dipoles[0,1,:] = 0
+    dipoles[1,0,:] = dipoles[0,1,:] 
+    #3 <OS1|mu|ZW+> 
+    dipoles[0,2,:] = - 2 * dip1el[SOMO1,SOMO2,:]
+    dipoles[2,0,:] = dipoles[0,2,:] 
+    #4 <OS1|mu|HS1> 
+    block_index = 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[0,col,:] = dip1el[o_orb, SOMO1, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #5 <OS1|mu|HS2> 
+    block_index = ndocc + 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[0,col,:] = - dip1el[o_orb, SOMO2, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #6 <OS1|mu|SL1> 
+    block_index = 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[0,col,:] = - dip1el[v_orb, SOMO1, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #7 <OS1|mu|SL2> 
+    block_index = nvirt + 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[0,col,:] = dip1el[v_orb, SOMO2, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #8 <OS1|mu|HL1>
+    block_index = 2 * nvirt + 2 * ndocc + 3
+    for col in range(block_index, block_index + (ndocc * nvirt)):
+        o_orb = (col - block_index) // nvirt # Increase o_orb after every ndocc cols
+        v_orb = (col - block_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
+        dipoles[0,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
+        dipoles[col,0,:] = dipoles[0,col,:]
+    #9 <OS1|mu|HL2>=0
+    #9 <OS1|mu|1^HSD>=0
+    # <OS1|mu|1^SLD>=0
+    
+    
+    #10 <ZW-|mu|ZW->
+    for o in range(ndocc):
+        dipoles[1,1,:] -= 2*dip1el[o,o,:]
+    dipoles[1,1,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
+    #11 <ZW-|mu|ZW+>
+    dipoles[1,2,:] = - (dip1el[SOMO1,SOMO1,:] - dip1el[SOMO2,SOMO2,:])
+    dipoles[2,1,:] = dipoles[1,2,:]
+    #12 <ZW-|mu|HS1>
+    block_index = 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[1,col,:] = - dip1el[o_orb, SOMO2, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #13 <ZW-|mu|HS2>
+    block_index = ndocc + 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[1,col,:] = - dip1el[o_orb, SOMO1, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #14 <ZW-|mu|SL1> 
+    block_index = 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[1,col,:] = dip1el[v_orb, SOMO1, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #15 <ZW-|mu|SL2>
+    block_index = 3 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[1,col,:] = dip1el[v_orb, SOMO2, :]
+        dipoles[col,1,:] = dipoles[1,col,:]
+    #16 <ZW-|mu|HL1> = 0
+    #17 <ZW-|mu|HL2> = 0
+    #17 <ZW-|mu|1^HSD>=0
+    # <ZW-|mu|1^SLD>=0
+    
+    
+    #18 <ZW+|mu|ZW+>
+    for o in range(ndocc):
+        dipoles[2,2,:] -= 2*dip1el[o,o,:]
+    dipoles[2,2,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
+    #19 <ZW+|mu|HS1>
+    block_index = 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[2,col,:] = - dip1el[o_orb, SOMO2, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #20 <ZW+|mu|HS2>
+    block_index = ndocc + 3
+    for col in range(block_index, block_index + ndocc):
+        o_orb = col - block_index
+        dipoles[2,col,:] = dip1el[o_orb, SOMO1, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #21 <ZW+|mu|SL1>
+    block_index = 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[2,col,:] = dip1el[v_orb, SOMO1, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #22 <ZW+|mu|SL2>
+    block_index = nvirt + 2 * ndocc + 3
+    for col in range(block_index, block_index + nvirt):
+        v_orb = col - block_index + (SOMO2 + 1)
+        dipoles[2,col,:] = - dip1el[v_orb, SOMO2, :]
+        dipoles[col,2,:] = dipoles[2,col,:]
+    #23 <ZW+|mu|HL1> = 0
+    #24 <ZW+|mu|HL2> = 0
+    #24 <ZW+|mu|1^HSD>=0
+    # <ZW+|mu|1^SLD>=0
+    
+    
+    row_block_index = 3
+    #25 <HS1|mu|HS1>
+    col_block_index = 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
+            dipoles[col,row,:] = dipoles[row,col,:] 
+    #26 <HS1|mu|HS2>
+    col_block_index = ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + ndocc):
+             o_orb2 = col - col_block_index
+             if o_orb1 == o_orb2:
+                 dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :] #Only diagonal elements are non-zero
+                 dipoles[col,row,:] = dipoles[row,col, :]
+    #27 <HS1|mu|SL1> = 0
+    #28 <HS1|mu|SL2> = 0
+    #29 <HS1|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #30 <HS1|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #30 <HS1|mu|1^HSD>
+    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        o_orb2 = 0
+        o_orb3 = 0
+        for col in range(col_block_index, col_block_index + ndoc1):
+            if o_orb1 == o_orb2:
+                if o_orb2 == o_orb3:
+                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[o_orb1, SOMO2, :]
+                else:
+                    dipoles[row, col, :] = - dip1el[o_orb3, SOMO2, :]
+            elif o_orb1 == o_orb3:
+                if o_orb2 == o_orb3:
+                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[o_orb1, SOMO2, :]
+                else:
+                    dipoles[row, col, :] = - dip1el[o_orb2, SOMO2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            o_orb3 += 1
+            if o_orb3 == ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2
+    # <HS1|mu|1^SLD> = 0
+
+    row_block_index = ndocc + 3
+    #31 <HS2|mu|HS2>
+    col_block_index = ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #32 <HS2|mu|SL1> = 0
+    #33 <HS2|mu|SL2> = 0
+    #34 <HS2|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #35 <HS2|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - np.sqrt(1.5) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #35 <HS2|mu|1^HSD>
+    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        o_orb2 = 0
+        o_orb3 = 0
+        for col in range(col_block_index, col_block_index + ndoc1):
+            if o_orb1 == o_orb2:
+                if o_orb2 == o_orb3:
+                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, SOMO1, :]
+                else:
+                    dipoles[row, col, :] = dip1el[o_orb3, SOMO1, :]
+            elif o_orb1 == o_orb3:
+                if o_orb2 == o_orb3:
+                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, SOMO1, :]
+                else:
+                    dipoles[row, col, :] = dip1el[o_orb2, SOMO1, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            o_orb3 += 1
+            if o_orb3 == ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2
+    # <HS2|mu|1^SLD> = 0
+
+
+    row_block_index = 2 * ndocc + 3
+    #36 <SL1|mu|SL1>
+    col_block_index = 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #37 <SL1|mu|SL2>
+    col_block_index = nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row,col,:] = dip1el[SOMO1,SOMO2,:]                 
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #38 <SL1|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #39 <SL1|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #39 <SL1|mu|HSD> = 0
+    # <SL1|mu|1^SLD> 
+    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 1
+        for col in range(col_block_index, col_block_index + ndcv1):
+            if v_orb2 == v_orb3:
+                if v_orb1 == v_orb2:
+                    dipoles[row,col,:] = - np.sqrt(2) * dip1el[v_orb1,SOMO2,:]                 
+            else:
+                if v_orb1 == v_orb2:
+                    dipoles[row,col,:] = - dip1el[v_orb3,SOMO2,:] 
+                elif v_orb1 == v_orb3:
+                    dipoles[row,col,:] = - dip1el[v_orb2,SOMO2,:]
+            dipoles[col,row,:] = dipoles[row,col,:]
+
+
+    row_block_index = nvirt + 2 * ndocc + 3
+    #40 <SL2|mu|SL2>
+    col_block_index = nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #41 <SL2|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #42 <SL2|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = np.sqrt(1.5) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #42 <SL2|mu|HSD> = 0
+    # <SL2|mu|SLD> 
+    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 1
+        for col in range(col_block_index, col_block_index + ndcv1):
+            if v_orb2 == v_orb3:
+                if v_orb1 == v_orb2:
+                    dipoles[row,col,:] = np.sqrt(2) * dip1el[v_orb1,SOMO1,:]                 
+            else:
+                if v_orb1 == v_orb2:
+                    dipoles[row,col,:] = dip1el[v_orb3,SOMO1,:] 
+                elif v_orb1 == v_orb3:
+                    dipoles[row,col,:] = dip1el[v_orb2,SOMO1,:]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    
+    
+    row_block_index = 2 * nvirt + 2 * ndocc + 3
+    #43 <HL1|mu|HL1>
+    col_block_index = 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #44 <HL1|mu|HL2> = 0
+    #45 <HL1|mu|HSD> = 0
+    # <HL1|mu|SLD> = 0
+
+
+    row_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    #43 <HL2|mu|HL2>
+    col_block_index = (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    # <HL1|mu|HLD> = 0
+    # <HL1|mu|SLD> = 0
+    
+    row_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    #44 <1^HSD|mu|1^HSD>
+    col_block_index = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    o_orb1 = 0
+    o_orb2 = 0
+    for row in range(row_block_index, row_block_index + ndoc1):
+        o_orb3 = 0
+        o_orb4 = 0
+        for col in range(col_block_index, col_block_index + ndoc1):
+            if o_orb1 == o_orb2 and o_orb3 == o_orb4:
+                if o_orb1 == o_orb3:
+                    for o in range(ndocc):
+                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
+                    dipoles[row, col, :] += 2 * dip1el[o_orb1, o_orb1, :]
+                    dipoles[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
+                    dipoles[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
+            elif o_orb1 == o_orb2 and o_orb3 != o_orb4:
+                if o_orb1 == o_orb3:
+                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, o_orb4, :]
+                elif o_orb1 == o_orb4:
+                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb1, o_orb3, :]
+            elif o_orb3 == o_orb4 and o_orb1 != o_orb2:
+                if o_orb3 == o_orb1:
+                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb3, o_orb2, :]
+                elif o_orb3 == o_orb2:
+                    dipoles[row, col, :] = np.sqrt(2) * dip1el[o_orb3, o_orb1, :]
+            else:
+                if o_orb1 == o_orb3 and o_orb2 == o_orb4:
+                    for o in range(ndocc):
+                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
+                        dipoles[row, col, :] += dip1el[o_orb1, o_orb1, :]
+                        dipoles[row, col, :] += dip1el[o_orb2, o_orb2, :]
+                        dipoles[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
+                        dipoles[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
+                elif o_orb1 == o_orb3 and o_orb2 != o_orb4:
+                    dipoles[row,col,:] = dip1el[o_orb2,o_orb4,:]
+                elif o_orb2 == o_orb4 and o_orb1 != o_orb3:
+                    dipoles[row,col,:] = dip1el[o_orb1,o_orb3,:]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            o_orb4 += 1
+            if o_orb4 == ndocc:
+                o_orb3 += 1
+                o_orb4 = o_orb3
+        o_orb2 += 1
+        if o_orb2 == ndocc:
+            o_orb1 += 1
+            o_orb2 = o_orb1
+    # <HSD|mu|SLD> = 0
+    
+    # <SLD|mu|SLD>
+    row_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    col_block_index = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    v_orb1 = SOMO2 + 1
+    v_orb2 = SOMO2 + 1
+    for row in range(row_block_index, row_block_index + ndcv1):
+        v_orb3 = SOMO2 + 1
+        v_orb4 = SOMO2 + 1
+        for col in range(col_block_index, col_block_index + ndcv1):
+            if v_orb1 == v_orb2 and v_orb3 == v_orb4:
+                if v_orb1 == v_orb3:
+                    for o in range(ndocc):
+                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
+                    dipoles[row,col,:] -= 2 * dip1el[v_orb1,v_orb1,:]                 
+            elif v_orb1 == v_orb2 and v_orb3 != v_orb4:
+                if v_orb1 == v_orb3:
+                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb1, v_orb4, :]
+                elif v_orb1 == v_orb4:
+                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb1, v_orb3, :]
+            elif v_orb1 != v_orb2 and v_orb3 == v_orb4:
+                if v_orb3 == v_orb1:
+                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb3, v_orb2, :]
+                elif v_orb3 == v_orb2:
+                    dipoles[row, col, :] = - np.sqrt(2) * dip1el[v_orb3, v_orb1, :]
+            else:
+                if v_orb1 == v_orb3 and v_orb2 == v_orb4:
+                    for o in range(ndocc):
+                        dipoles[row, col, :] -= 2 * dip1el[o, o, :]
+                    dipoles[row,col,:] -= dip1el[v_orb1,v_orb1,:] 
+                    dipoles[row,col,:] -= dip1el[v_orb2,v_orb2,:] 
+                elif v_orb1 == v_orb3 and v_orb2 != v_orb4:
+                    dipoles[row,col,:] = -dip1el[v_orb2,v_orb4,:]
+                elif v_orb1 != v_orb3 and v_orb2 == v_orb4:
+                    dipoles[row,col,:] = -dip1el[v_orb1,v_orb3,:]
+            
+            dipoles[col,row,:] = dipoles[row,col,:]
+    
+
+################# TRIPLET BLOCK ######################
+
+    row_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+    #46 <OS3|mu|OS3>
+    for o in range(ndocc):
+        dipoles[row_index,row_index,:] -= 2*dip1el[o,o,:]
+    dipoles[row_index,row_index,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
+    #47 <OS3|mu|HS1>
+    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
+    for col in range(col_index, col_index + ndocc):
+        o_orb = col - col_index
+        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO1,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #48 <OS3|mu|HS2>
+    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    for col in range(col_index, col_index + ndocc):
+        o_orb = col - col_index
+        dipoles[row_index,col,:] = -dip1el[o_orb,SOMO2,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #49 <OS3|mu|SL1>
+    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
+    for col in range(col_index, col_index + nvirt):
+        v_orb = col - col_index + (SOMO2 + 1)
+        dipoles[row_index,col,:] = -dip1el[v_orb,SOMO1,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #50 <OS3|mu|SL2>
+    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for col in range(col_index, col_index + nvirt):
+        v_orb = col - col_index + (SOMO2 + 1)
+        dipoles[row_index,col,:] = dip1el[v_orb,SOMO2,:]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #51 <OS3|mu|HL1>
+    col_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for col in range(col_index, col_index + (ndocc * nvirt)):
+        o_orb = (col - col_index) // nvirt # Increase o_orb after every nvirt cols
+        v_orb = (col - col_index) % nvirt + (SOMO2 + 1) # Increase v_orb then reset after nvirt cols
+        dipoles[row_index,col,:] = (-2 ** 0.5) * dip1el[o_orb, v_orb, :]
+        dipoles[col,row_index,:] = dipoles[row_index,col,:]
+    #52 <OS3|mu|HL2> = 0
+    #53 <OS3|mu|HL3> = 0
+    #54 <OS3|mu|3^HSD> = 0
+    # <OS3|mu|SLD> = 0
+    
+
+    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
+    #54 <HS1|H|HS1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :] 
+            dipoles[col,row,:] = dipoles[row,col,:] 
+    #55 <HS1|mu|HS2>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #56 <HS1|mu|SL1> = 0
+    #57 <HS1|mu|SL2> = 0
+    #58 <HS1|mu|HL1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #59 <HS1|mu|HL2>
+    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #60 <HS1|mu|HL3>
+    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - dip1el[SOMO1, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #60 <HS1|mu|3^HSD>
+    col_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        o_orb2 = 0
+        o_orb3 = 1
+        for col in range(col_block_index, col_block_index + ndoc3):
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - dip1el[o_orb3, SOMO2, :]
+            elif o_orb1 == o_orb3:
+                dipoles[row, col, :] = dip1el[o_orb2, SOMO2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            o_orb3 += 1
+            if o_orb3 == ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2 + 1
+    # <HS1|mu|SLD> = 0
+
+    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    #61 <HS2|mu|HS2>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(row, col_block_index + ndocc):
+            o_orb2 = col - col_block_index
+            if o_orb1 == o_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = dip1el[o_orb1, o_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #62 <HS2|mu|SL1> = 0
+    #63 <HS2|mu|SL2> = 0
+    #64 <HS2|mu|HL1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #65 <HS2|mu|HL2>
+    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #65 <HS2|mu|HL3>
+    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = - dip1el[SOMO2, v_orb, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #65 <HS2|mu|3^HSD>
+    col_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + ndocc):
+        o_orb1 = row - row_block_index
+        o_orb2 = 0
+        o_orb3 = 1
+        for col in range(col_block_index, col_block_index + ndoc3):
+            if o_orb1 == o_orb2:
+                dipoles[row, col, :] = dip1el[o_orb3, SOMO1, :]
+            elif o_orb1 == o_orb3:
+                dipoles[row, col, :] = - dip1el[o_orb2, SOMO1, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            o_orb3 += 1
+            if o_orb3 == ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2 + 1
+    # <HS2|mu|SLD> = 0
+
+    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
+    #66 <SL1|mu|SL1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #67 <SL1|mu|SL2>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row,col,:] = -dip1el[SOMO1,SOMO2,:]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #68 <SL1|mu|HL1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #69 <SL1|mu|HL2>
+    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #70 <SL1|mu|HL3>
+    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - dip1el[o_orb, SOMO1, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #70 <SL1|mu|3^HSD> = 0
+    # <SL1|mu|SLD>
+    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = (row - row_block_index) + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 2
+        for col in range(col_block_index, col_block_index + ndcv3):
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - dip1el[v_orb3, SOMO2, :]
+            elif v_orb1 == v_orb3:
+                dipoles[row, col, :] = dip1el[v_orb2, SOMO2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            v_orb3 += 1
+            if v_orb3 >= norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2 + 1
+    
+    
+    
+    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    #71 <SL2|H|SL2>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(row, col_block_index + nvirt):
+            v_orb2 = col - col_block_index + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o, o, :]
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+            else:    
+                dipoles[row,col,:] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #72 <SL2|mu|HL1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #73 <SL2|mu|HL2>
+    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = - (1 / np.sqrt(2)) * dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #74 <SL2|mu|HL3>
+    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = row - row_block_index + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = dip1el[o_orb, SOMO2, :]
+                dipoles[col,row,:] = dipoles[row,col,:]
+    #74 <SL2|mu|3^HSD> = 0
+    # <SL2|mu|SLD>
+    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + nvirt):
+        v_orb1 = (row - row_block_index) + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 2
+        for col in range(col_block_index, col_block_index + ndcv3):
+            if v_orb1 == v_orb2:
+                dipoles[row, col, :] = dip1el[v_orb3, SOMO1, :]
+            elif v_orb1 == v_orb3:
+                dipoles[row, col, :] = - dip1el[v_orb2, SOMO1, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            v_orb3 += 1
+            if v_orb3 >= norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2 + 1
+    
+    
+    row_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #75 <HL1|mu|HL1>
+    col_block_index = ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #76 <HL1|mu|HL2> = 0
+    #77 <HL1|mu|HL3> = 0
+    #78 <HL1|mu|3^HSD> = 0
+    # <HL1|mu|SLD> = 0
+    
+    
+    row_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #78 <HL2|mu|HL2>
+    col_block_index = ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #79 <HL2|mu|HL3> = 0
+    #80 <HL2|mu|3^HSD> = 0
+    # <HL2|mu|SLD> = 0
+
+
+    row_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #80 <HL3|mu|HL3>
+    col_block_index = ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+    #80 <HL3|H|3^HSD> = 0
+    # <HL3|H|SLD> = 0
+    
+    
+    row_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #81 <3^HSD|mu|3^HSD>
+    col_block_index = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    o_orb1 = 0
+    o_orb2 = 1
+    for row in range(row_block_index, row_block_index + ndoc3):
+        o_orb3 = 0
+        o_orb4 = 1
+        for col in range(col_block_index, col_block_index + ndoc3):
+            if o_orb1 == o_orb3 and o_orb2 == o_orb4:
+                for o in range(ndocc):
+                    dipoles[row, col, :] -= 2 * dip1el[o, o, :]
+                dipoles[row, col, :] += dip1el[o_orb1, o_orb1, :]
+                dipoles[row, col, :] += dip1el[o_orb2, o_orb2, :]
+                dipoles[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
+                dipoles[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
+            elif o_orb1 == o_orb3 and o_orb2 != o_orb4:
+                dipoles[row,col,:] = - dip1el[o_orb2,o_orb4,:]
+            elif o_orb2 == o_orb4 and o_orb1 != o_orb3:
+                dipoles[row,col,:] = dip1el[o_orb1,o_orb3,:]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            o_orb4 += 1
+            if o_orb4 == ndocc:
+                o_orb3 += 1
+                o_orb4 = o_orb3 + 1
+        o_orb2 += 1
+        if o_orb2 == ndocc:
+            o_orb1 += 1
+            o_orb2 = o_orb1 + 1
+    # <3^HSD|mu|SLD> = 0
+    
+    # <SLD|mu|SLD>
+    row_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #81 <3^HSD|mu|3^HSD>
+    col_block_index = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    v_orb1 = SOMO2 + 1
+    v_orb2 = SOMO2 + 2
+    for row in range(row_block_index, row_block_index + ndcv3):
+        v_orb3 = SOMO2 + 1
+        v_orb4 = SOMO2 + 2
+        for col in range(col_block_index, col_block_index + ndcv3):
+            if v_orb1 == v_orb3 and v_orb2 == v_orb4:
+                for o in range(ndocc):
+                    dipoles[row, col, :] -= 2 * dip1el[o, o, :]
+                dipoles[row, col, :] -= dip1el[v_orb1, v_orb1, :]
+                dipoles[row, col, :] -= dip1el[v_orb2, v_orb2, :]
+            elif v_orb1 == v_orb3 and v_orb2 != v_orb4:
+                dipoles[row,col,:] = - dip1el[v_orb2,v_orb4,:]
+            elif v_orb2 == v_orb4 and v_orb1 != v_orb3:
+                dipoles[row,col,:] = dip1el[v_orb1,v_orb3,:]
+            dipoles[col,row,:] = dipoles[row,col,:]
+            v_orb4 += 1
+            if v_orb4 == norbs:
+                v_orb3 += 1
+                v_orb4 = v_orb3 + 1
+        v_orb2 += 1
+        if v_orb2 == norbs:
+            v_orb1 += 1
+            v_orb2 = v_orb1 + 1
+    
+    
+    row_block_index = nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    #81 <DQ|mu|DQ>
+    col_block_index = nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+    for row in range(row_block_index, row_block_index + (ndocc * nvirt)):
+        o_orb1 = (row - row_block_index) // nvirt
+        v_orb1 = (row - row_block_index) % nvirt + (SOMO2 + 1)
+        for col in range(col_block_index, col_block_index + (ndocc * nvirt)):
+            o_orb2 = (col - col_block_index) // nvirt
+            v_orb2 = (col - col_block_index) % nvirt + (SOMO2 + 1)
+            if o_orb1 == o_orb2 and v_orb1 == v_orb2:
+                for o in range(ndocc):
+                    dipoles[row,col,:] -= 2 * dip1el[o,o,:]
+                dipoles[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                dipoles[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
+                dipoles[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
+                dipoles[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
+            elif v_orb1 == v_orb2 and o_orb1 != o_orb2:    
+                dipoles[row, col, :] = dip1el[o_orb1, o_orb2, :]
+            elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
+                dipoles[row, col, :] = -dip1el[v_orb1, v_orb2, :]
+            dipoles[col,row,:] = dipoles[row,col,:]
+        
+    #print("%10.5f"%linalg.norm(dipoles[:,:,0] - dipoles[:,:,0].T))  # checking symmetric
+    #print("%10.5f"%linalg.norm(dipoles[:,:,1] - dipoles[:,:,1].T))
+    #print("%10.5f"%linalg.norm(dipoles[:,:,2] - dipoles[:,:,2].T))   
+
+    OS1_perm_dip=dipoles[0,0,:]
+    ZWminus_perm_dip=dipoles[1,1,:]
+    ZWplus_perm_dip=dipoles[2,2,:]
+    OS3_perm_dip=dipoles[ndcv1 + ndoc1 + 2*(ndocc * nvirt) + 2*nvirt + 2*ndocc +3, ndcv1 + ndoc1 + 2*(ndocc * nvirt) + 2*nvirt + 2*ndocc +3,:]
+    for dipole in [OS1_perm_dip, ZWminus_perm_dip, ZWplus_perm_dip, OS3_perm_dip]:
+        for i in range(natoms):
+            atom_z=0
+            if atoms[i][0] in ['C','c','n1','N1']:
+                atom_z=1
+            elif atoms[i][0] in ['Cl','cl','CL','N2','n2']:
+                atom_z=2   
+            # for x in range(3):
+            #     perm_dip[x]+=atom_z*coords[i,x]*tobohr
+            dipole[:]+=atom_z*coords[i,:]*tobohr
+    print(f"Permanent dipole moment of reference states:\n \
+            Open-Shell Singlet (|OS1>) = {OS1_perm_dip[0]:.3f} x {OS1_perm_dip[1]:.3f} y {OS1_perm_dip[2]:.3f} z\n \
+            Zwitterion - (|ZW->) = {ZWminus_perm_dip[0]:.3f} x {ZWminus_perm_dip[1]:.3f} y {ZWminus_perm_dip[2]:.3f} z\n \
+            Zwitterion + (|ZW+>) = {ZWplus_perm_dip[0]:.3f} x {ZWplus_perm_dip[1]:.3f} y {ZWplus_perm_dip[2]:.3f} z\n \
+            Open-Shell Triplet (|OS3>) = {OS3_perm_dip[0]:.3f} x {OS3_perm_dip[1]:.3f} y {OS3_perm_dip[2]:.3f} z\n")
+    return dipoles
+
+
+def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type, csf_tol=0.01):
+    print("Energy of the lowest CI state:", ci_energies[0])
+    osc_array1 = np.zeros_like(ci_energies)
+    osc_array3 = np.zeros_like(ci_energies)
+    s2_array = np.zeros_like(ci_energies)
+    nvirt = norbs - ndocc - 2
+    ndoc1 = int((ndocc ** 2 + ndocc) / 2)
+    ndcv1 = int((nvirt ** 2 + nvirt) / 2)
+    strng3 = ""
+    strng1 = ""
+    for i in range(rng): # Loop over CIS states
+        if ci_energies[i] - ci_energies[0] > cutoff_energy:
+            break
+        print("\nState %s %04.3f eV " % (i, ci_energies[i] - ci_energies[0]))
+        print("Excitation    CI Coef")
+        out_file.write("State %s %04.3f eV \n" % (i, ci_energies[i] - ci_energies[0]))
+        out_file.write("Excitation    CI Coef\n")
+        spin = 0 # initialise total spin
+        for j in range (ci_coeffs.shape[0]): # Loop over configurations in each CIS state
+                    
+            if ci_type == 'XCIS':
+            ########## SINGLET CSFS ##########   
+            # Open shell singlet ground state (|OS1>)
+                if j == 0: 
+                    str = "|1^OS>"
+                    # S^2 = 0
+            # Zwitterion - (|ZW->)    
+                elif j == 1:
+                    str = "|1^ZW->"
+                    # S^2 = 0
+            # Zwitterion 0' (|ZW+>)   
+                elif j == 2:
+                    str = "|1^ZW+>"
+                    # S^2 = 0
+            # Singlet core to SOMO 0 (|1^CS>)
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0)>" 
+                    # S^2 = 0 
+            # Singlet core to SOMO 0' (|1^CS>)
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0')>" 
+                    # S^2 = 0
+            # Singlet SOMO 0 to virtual (|1^SV>)
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    str = f"|1^SV(0->{iorb}')>"
+                    # S^2 = 0
+            # Singlet SOMO 0' to virtual (|1^SV>)
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    str = f"|1^SV(0'->{iorb}')>"
+                    # S^2 = 0
+            # Singlet Core to Virtual 1 (|1S^CV>)
+                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1S^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Core to Virtual 2 (|1T^CV>)
+                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1T^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            ########### TRIPLET CSFs ###########
+            # Triplet ground state (|OS3>)
+                elif j == (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
+                    str = "|3^OS>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet core to SOMO 0 (|3^CS>)
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
+                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0)>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1) 
+            # Triplet core to SOMO 0' (|3^CS>)
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
+                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet SOMO 0 to virtual (|3^SV>)
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0->{iorb}')>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet SOMO 0' to virtual (|3^SV>)
+                elif j > (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0'->{iorb}')>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet Core to Virtual 1 (|3T^CV>)
+                elif j > (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3T^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet Core to Virtual 2 (|3S^CV>)
+                elif j > (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3S^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet Core to Virtual 3 (|3X^CV>)
+                elif j > (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3X^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Quintet Core to Virtual (|5^CV>)
+                elif j > (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|5^CV({o_orb}->{v_orb}')>" 
+                    spin += 6 * ci_coeffs[j,i]**2 # (S=2)
+                    
+                if np.absolute(ci_coeffs[j,i]) > csf_tol:
+                    print("%s %10.5f" %(str, ci_coeffs[j,i]))
+                    out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
+
+            elif ci_type == 'XCISD':
+            ########## SINGLET CSFS ##########   
+            # Open shell singlet ground state (|OS1>)
+                if j == 0: 
+                    str = "|1^OS>"
+                    # S^2 = 0
+            # Zwitterion - (|ZW->)    
+                elif j == 1:
+                    str = "|1^ZW->"
+                    # S^2 = 0
+            # Zwitterion 0' (|ZW+>)   
+                elif j == 2:
+                    str = "|1^ZW+>"
+                    # S^2 = 0
+            # Singlet core to SOMO 0 (|1^CS>)
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0)>" 
+                    # S^2 = 0 
+            # Singlet core to SOMO 0' (|1^CS>)
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0')>" 
+                    # S^2 = 0
+            # Singlet SOMO 0 to virtual (|1^SV>)
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    str = f"|1^SV(0->{iorb}')>"
+                    # S^2 = 0
+            # Singlet SOMO 0' to virtual (|1^SV>)
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    str = f"|1^SV(0'->{iorb}')>"
+                    # S^2 = 0
+            # Singlet Core to Virtual 1 (|1S^CV>)
+                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1S^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Core to Virtual 2 (|1T^CV>)
+                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1T^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Double Core to SOMO (|1^CSD>)
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+                    k = j - block_start
+                    o_orb1 = ndocc 
+                    o_orb2 = ndocc
+                    temp_k = k
+                    row_size = ndocc
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size -= 1
+                    o_orb2 = o_orb1 - temp_k
+                    str = f"|1^CSD_({o_orb1},{o_orb2})>"
+                    # S^2 = 0
+            # Singlet Double SOMO to Virtual (|1^SVD>)
+                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    block_start = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+                    k = j - block_start
+                    v_orb1 = 1
+                    v_orb2 = 1
+                    temp_k = k
+                    row_size = nvirt
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        v_orb1 += 1
+                        row_size -= 1
+                    v_orb2 = v_orb1 + temp_k
+                    str = f"|1^SVD_({v_orb1}',{v_orb2}')>"
+                    # S^2 = 0
+            ########### TRIPLET CSFs ###########
+            # Triplet ground state (|OS3>)
+                elif j == (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
+                    str = "|3^OS>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet Homo to SOMO 1 (|3^HS1>)
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
+                    iorb = (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0)>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1) 
+            # Triplet Homo to SOMO 2 (|3^HS2>)
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
+                    iorb = (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet SOMO to LUMO 1 (|3^SL1>)
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0->{iorb}')>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet SOMO to LUMO 2 (|3^SL2>)
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0'->{iorb}')>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet HOMO to LUMO 1 (|1^HL1>)
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3T^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet HOMO to LUMO 2 (|3^HL2>)
+                elif j > (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3S^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet HOMO to LUMO 3 (|3^HL2>)
+                elif j > (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3X^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet double Core to SOMO    
+                elif j > (ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    block_start = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+                    k = j - block_start
+                    o_orb1 = ndocc
+                    temp_k = k
+                    row_size = o_orb1 - 1
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size = o_orb1 - 1
+                    o_orb2 = (o_orb1 - 1) - temp_k
+                    str = f"|3^CSD({o_orb1},{o_orb2})>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet double SOMO to Virtual    
+                elif j > (ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    block_start = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+                    k = j - block_start
+                    o_orb1 = 1
+                    temp_k = k
+                    row_size = nvirt - 1 
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 += 1
+                        row_size = nvirt - o_orb1
+                    o_orb2 = o_orb1 + 1 + temp_k
+                    str = f"|3^SVD({o_orb1},{o_orb2})>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Quintet HOMO to LUMO (|5^HL>)
+                elif j > (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|5^CV({o_orb}->{v_orb}')>"
+                    spin += 6 * ci_coeffs[j,i]**2 # (S=2)
+                
+                if np.absolute(ci_coeffs[j,i]) > csf_tol:
+                    print("%s %10.5f" %(str, ci_coeffs[j,i]))
+                    out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
+            
+        if i == 0:
+            if spin > 1:
+                print('Ground state is triplet')
+                triplet = 0
+                singlet = 1
+            else:
+                print('Ground state is singlet')
+                singlet = 0
+                triplet = 1
+
+        osc3 = 2.0/3.0 * ((ci_energies[i] - ci_energies[triplet]) / toev) * (tdms[triplet][i,0]**2 + tdms[triplet][i,1]**2 + tdms[triplet][i,2]**2)  # Calculating Oscillator Strength with Triplet Ground state
+        osc1 = 2.0/3.0 * ((ci_energies[i] - ci_energies[singlet]) / toev) * (tdms[singlet][i,0]**2 + tdms[singlet][i,1]**2 + tdms[singlet][i,2]**2)  # Calculating Oscillator Strength with Singlet Ground state
+        osc_array3[i] = osc3
+        osc_array1[i] = osc1
+        s2_array[i] = spin
+        print("TDMs with Triplet 'Ground' state")
+        print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[triplet][i,0], tdms[triplet][i,1], tdms[triplet][i,2], osc3, spin))
+        print("--------------------------------------------------------------------")
+        print("TDMs with Singlet 'Ground' state")
+        print("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[singlet][i,0], tdms[singlet][i,1], tdms[singlet][i,2], osc1, spin))
+        print("--------------------------------------------------------------------\n")
+        out_file.write("TDMs with Triplet 'Ground' state")
+        out_file.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[triplet][i,0], tdms[triplet][i,1], tdms[triplet][i,2], osc3, spin))
+        out_file.write("--------------------------------------------------------------------")
+        out_file.write("TDMs with Singlet 'Ground' state")
+        out_file.write("TDMX:%04.3f   TDMY:%04.3f   TDMZ:%04.3f   Oscillator Strength:%04.5f   <S**2>: %04.3f" % (tdms[singlet][i,0], tdms[singlet][i,1], tdms[singlet][i,2], osc1, spin))
+        out_file.write("--------------------------------------------------------------------\n")
+        #strng3 = strng3 + broaden(20.0,osc3,ci_energies[i]-ci_energies[triplet])
+        strng3 = strng3 + broaden(FWHM,osc3,ci_energies[i]-ci_energies[triplet])
+        strng1 = strng1 + broaden(FWHM,osc1,ci_energies[i]-ci_energies[singlet])
+    
+    return (strng3, strng1), (osc_array3, osc_array1), s2_array
+
+
+def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
+    # Print energies of CSFs
+        nvirt = norbs - ndocc - 2
+        ndoc1 = int((ndocc ** 2 + ndocc) / 2)
+        ndcv1 = int((nvirt ** 2 + nvirt) / 2)
+        for j in range(ham_rot.shape[1]):
+                
+            if ci_type == 'XCIS':
+                if j == 0: 
+                    str = "|1^OS>" 
+                elif j == 1:
+                    str = "|1^ZW->"
+                elif j == 2:
+                    str = "|1^ZW+>"
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0)>"
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0')>"
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    str = f"|1^SV(0->{iorb}')>"
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    str = f"|1^SV(0'->{iorb}')>"
+                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1S^CV({o_orb}->{v_orb}')>"
+                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1T^CV({o_orb}->{v_orb}')>"
+                elif j == (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
+                    str = "|3^OS>"
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
+                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0)>"
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
+                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0')>" 
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0->{iorb}')>"
+                elif j > (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0'->{iorb}')>"
+                elif j > (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3T^CV({o_orb}->{v_orb}')>"
+                elif j > (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3S^CV({o_orb}->{v_orb}')>"
+                elif j > (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3X^CV({o_orb}->{v_orb}')>"
+                elif j > (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|5^CV({o_orb}->{v_orb}')>"
+                print(f"Energy of CSF {str}:", np.diag(ham_rot)[j])
+            
+            if ci_type == 'XCISD':
+                if j == 0: 
+                    str = "|1^OS>" 
+                elif j == 1:
+                    str = "|1^ZW->"
+                elif j == 2:
+                    str = "|1^ZW+>"
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0)>"
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0')>"
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    str = f"|1^SV(0->{iorb}')>"
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    str = f"|1^SV(0'->{iorb}')>"
+                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1S^CV({o_orb}->{v_orb}')>"
+                elif j > ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1T^CV({o_orb}->{v_orb}')>"
+                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    block_start = 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+                    k = j - block_start
+                    o_orb1 = ndocc 
+                    o_orb2 = ndocc
+                    temp_k = k
+                    row_size = ndocc
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size -= 1
+                    o_orb2 = o_orb1 - temp_k
+                    str = f"|1^CSD_({o_orb1},{o_orb2})>"
+                elif j > (ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    block_start = ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3
+                    k = j - block_start
+                    v_orb1 = 1
+                    v_orb2 = 1
+                    temp_k = k
+                    row_size = nvirt
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        v_orb1 += 1
+                        row_size -= 1
+                    v_orb2 = v_orb1 + temp_k
+                    str = f"|1^SVD_({v_orb1}',{v_orb2}')>"
+                ########### TRIPLET CSFs ###########
+                elif j == (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
+                    str = "|3^OS>"
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
+                    iorb = (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0)>" 
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
+                    iorb = (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0')>" 
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0->{iorb}')>"
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0'->{iorb}')>"
+                elif j > (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3T^CV({o_orb}->{v_orb}')>" 
+                elif j > (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3S^CV({o_orb}->{v_orb}')>" 
+                elif j > (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3X^CV({o_orb}->{v_orb}')>" 
+                elif j > (ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    block_start = ndcv1 + ndoc1 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+                    k = j - block_start
+                    o_orb1 = ndocc
+                    temp_k = k
+                    row_size = o_orb1 - 1
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size = o_orb1 - 1
+                    o_orb2 = (o_orb1 - 1) - temp_k
+                    str = f"|3^CSD({o_orb1},{o_orb2})>"
+                elif j > (ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    block_start = ndcv1 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4
+                    k = j - block_start
+                    o_orb1 = 1
+                    temp_k = k
+                    row_size = nvirt - 1 
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 += 1
+                        row_size = nvirt - o_orb1
+                    o_orb2 = o_orb1 + 1 + temp_k
+                    str = f"|3^SVD({o_orb1},{o_orb2})>"
+            # QUINTET
+                elif j > (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (nvirt ** 2 + ndocc ** 2 + 5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|5^CV({o_orb}->{v_orb}')>"
+            
+                print(f"Energy of CSF {str}:", np.diag(ham_rot)[j])
+   
+
+
+def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file, ci_type = "XCIS"):
+    '''
+    Calculates monoradical excited states in rotated (CSF) basis using the CIS or XCIS method. Used for molecules without Nitrogen or Chlorine present.
+    
+    Args:
+        ndocc (int): Number of doubly occupied orbitals
+        norbs (int): Total number of orbitals
+        coords (array): Array of atomic coordinates
+        atoms (array): Array of atomic symbols
+        energy0 (float): Ground state energy
+        repulsion (array): 2-electron repulsion integrals in AO basis
+        orb_energies (array): HF orbital energies
+        hf_orbs (array): HF molecular orbitals
+        file (str): Name of file to write output to (without extension)
+
+    '''
+    base_dir = os.path.dirname(file)
+    mol_name = os.path.basename(file)
+    output_path = os.path.join(base_dir, 'Excited_States', f'{mol_name}_excitedstates.xyz')
+    with open(output_path,'w') as out:
+        print("")
+        print("------------------------")
+        print("Starting ExROPPP calculation for diradical in rotated basis")
+        print("------------------------\n")
+
+        out.write("")
+        out.write("------------------------")
+        out.write("Starting ExROPPP calculation for diradical in rotated basis")
+        out.write("------------------------\n")
+
+        # Transform 2-el ingrls into mo basis
+        rep_tens = transform(repulsion,hf_orbs)
+        print('Coulomb Matrix in MO basis, J_ij = (ii|jj):\n', np.einsum('iijj->ij', rep_tens))
+        print('Coulomb Matrix in MO basis, K_ij = (ij|ji):\n', np.einsum('ijij->ij', rep_tens))
+        # Get exchange and Coulomb terms for SOMOs
+        '''
+        print('Two-Electron Array')
+        for p in range(norbs):
+            for q in range(norbs):
+                for r in range(norbs):
+                    for s in range(norbs):
+                        val = rep_tens[p, q, r, s]
+                        # Only print significant values to avoid clutter
+                        if abs(val) > 1e-8:
+                            print(f"({p}, {q} | {r}, {s}) {val:15.8f}")
+        '''
+        # Construct CIS Hamiltonian
+        if ci_type == 'XCIS':
+            ham_rot = hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens)
+        elif ci_type == 'XCISD':
+            ham_rot = hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens)
+            
+        print('Dimensions of CI matrix:', ham_rot.shape)
+        print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
+        print("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
+
+        out.write("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... \n")
+        out.write("Frobenius norm of matrix - matrix transpose = %f.\n" %(linalg.norm(ham_rot-ham_rot.T)))
+        
+        # Print energies of CSFs
+        #print_csf_info(ham_rot, norbs, ndocc, ci_type=ci_type)
+        
+        # Set rng and cutoff_energy
+        nstates = ham_rot.shape[0]
+        if states_cutoff_option == 'states' and states_to_print <= nstates:
+            rng = states_to_print
+            print('Lowest %d states. WARNING - Some states may not be included in the spectrum.\n'%states_to_print)
+            out.write('Lowest %d states. WARNING - Some states may not be included in the spectrum.\n'%states_to_print)
+        else:
+            rng = nstates
+        if states_cutoff_option == 'energy':
+            cutoff_energy = energy_cutoff
+            print('Used energy cutoff of %04.2f eV for states. WARNING - Some states may not be included in spectrum.\n'%cutoff_energy)
+            out.write('Used energy cutoff of %04.2f eV for states. WARNING - Some states may not be included in spectrum.\n'%cutoff_energy)
+        else:
+            cutoff_energy = 100
+        
+        # Diagonalize CIS Hamiltonianfor first rng excited states
+        if rng < nstates:
+            print("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
+            out.write("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
+
+            ci_energies, ci_coeffs = sp.eigsh(ham_rot,k=rng,which="SA")
+        elif rng == nstates:
+            print("Diagonalizing Hamiltonian using the dense matrix method ...\n")
+            out.write("Diagonalizing Hamiltonian using the dense matrix method ...\n")
+            ci_energies, ci_coeffs = linalg.eigh(ham_rot)
+        
+
+        # Calculate transition dipole moment matrix
+        if ci_type == 'XCIS':
+            dip_array = dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates)
+        elif ci_type == 'XCISD':
+            dip_array = dipole_xcisd(coords,atoms,norbs,hf_orbs,ndocc,nstates)
+        
+        print("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... ")
+        print(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
+            {linalg.norm(dip_array[:, :, 1]-dip_array[:,:,1].T):.5f}, {linalg.norm(dip_array[:, :, 2]-dip_array[:,:,2].T):.5f}.\n")
+        out.write("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... \n")
+        out.write(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
+            {linalg.norm(dip_array[:, :, 1]-dip_array[:,:,1].T):.5f}, {linalg.norm(dip_array[:, :, 2]-dip_array[:,:,2].T):.5f}.\n")
+        
+        dip_couplings = np.einsum("ijx,jk",dip_array,ci_coeffs)
+        state0_tdms = np.einsum("j,jix",ci_coeffs[:,0].T, dip_couplings)
+        state1_tdms = np.einsum("j,jix",ci_coeffs[:,1].T, dip_couplings)
+        tdms = (state0_tdms, state1_tdms) 
+        
+        # Print information about CI states
+        strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type=ci_type, csf_tol=0.05)
+        strngs = (strngs[0][1:], strngs[1][1:])
+    return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
+
+
+
+
+
 def rad_calc(file,params):
     filename = os.path.basename(file)
     coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy0,one_body,two_body,orb_energy,hf_orbs,fock_mat=main_scf(file,params)
@@ -7811,7 +5880,7 @@ def rad_calc(file,params):
                 print("\nDensity Matrix:")
                 print(dens_mo)
                 sys.exit()
-    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_type = 'XCISD')
+    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_type = 'XCIS')
     return strngs, ci_energies_array, osc_arrays, s2_array  #return gnuplot data for plotting spectrum
 
 
