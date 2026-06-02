@@ -20,8 +20,11 @@ opt_params = [[-22.71707507,   1.70561621 ,  8.42083845  , 1.17315691 ,  0.     
 if __name__ == '__main__':
     from Diradical_ExROPPP import rad_calc
     from Diradical_ExROPPP import write_gnu as gnu_Exroppp
+    import time
 
-    # For doing individual ExROPPP calculations on one monoradical
+    start = time.perf_counter()
+
+    # For doing individual ExROPPP calculations on one diradical
     strngs,ci_energies_array, osc_arrays, s2_array  = rad_calc(file=optimized_geometry, params = opt_params)
     #Get spectrum plot for triplet
     filename = optimized_geometry + 'Triplet_Ref'
@@ -29,3 +32,6 @@ if __name__ == '__main__':
     #Get spectrum plot for singlet
     filename = optimized_geometry + 'Singlet_Ref'
     gnu_Exroppp(strngs[1], filename)
+    
+    elapsed = time.perf_counter() - start
+    print(f"Wall clock time: {elapsed:.4f} seconds")

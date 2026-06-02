@@ -55,7 +55,7 @@ def boltzmann_weights(delta_e_ev, temperature=298.15):
 
     # Triplet has degeneracy 3, singlet has degeneracy 1
     # Setting triplet energy as reference (E=0), singlet is at delta_e_ev
-    z_triplet = np.exp(0.0 / kT)
+    z_triplet = 3.0 * np.exp(0.0 / kT)
     z_singlet = 1.0 * np.exp(-delta_e_ev / kT)
     z_total = z_triplet + z_singlet
 
@@ -78,7 +78,7 @@ parser.add_argument('--temperature', type=float, default=298.15,
                     help="Temperature in Kelvin for Boltzmann weighting. Default 298.15 K.")
 args = parser.parse_args()
 
-wavelength = np.linspace(250, 850, 605)
+wavelength = np.linspace(200, 1000, 855)
 
 # Parse and evaluate both spectra
 singlet_cmd = parse_spectrum(args.singlet_file)
@@ -108,15 +108,16 @@ if np.max(broad_combined) > 0:
 plt.style.use('seaborn-v0_8-paper')
 fig, ax = plt.subplots()
 
-ax.plot(wavelength, broad_singlet, color='steelblue',  linestyle='--', linewidth=1.5, label='Singlet')
-ax.plot(wavelength, broad_triplet, color='firebrick',  linestyle='--', linewidth=1.5, label='Triplet')
-ax.plot(wavelength, broad_combined, color='teal', linewidth=2.0, label='Weighted Combination')
+ax.plot(wavelength, broad_singlet, color='darkblue',  linestyle='--', linewidth=1.2, label='Singlet')
+ax.plot(wavelength, broad_triplet, color='darkgreen',  linestyle='--', linewidth=1.2, label='Triplet')
+ax.plot(wavelength, broad_combined, color='firebrick', linewidth=2.5, label='Weighted Combination')
 
 ax.set_title(f'{args.molecule_name}')
 ax.set_xlabel('Wavelength / nm')
 ax.set_ylabel('Normalised Absorbance')
+ax.set_xlim(300, 800)
 ax.legend()
 
 plt.tight_layout()
-plt.savefig(f'{args.molecule_name}_spectrum.png', dpi=300)
+plt.savefig(f'{args.molecule_name}_spectrum.png', dpi=400)
 print(f"Spectrum saved to {args.molecule_name}_spectrum.png")

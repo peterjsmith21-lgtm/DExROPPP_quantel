@@ -8,7 +8,7 @@
             "program": "~/MSci_Code/Diradical-EXROPPP/main.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/test_molecules",
-            "args": ["~/MSci_Code/Diradical-EXROPPP/experiment_molecules_XCISD/TTM-Ph-TTM.xyz"],
+            "args": ["~/MSci_Code/Diradical-EXROPPP/Test_Molecules_Final/Trimethylenemethane.xyz"],
             "justMyCode": true
         }
     ]

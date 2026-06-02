@@ -361,8 +361,12 @@ class MODrawer(MolecularOrbitals):
             key = f'MO{self.somo_index+1}'
         elif key == 'HOMO':
             key = f'MO{self.somo_index-1}'
+        elif key == 'HOMO-1':
+            key = f'MO{self.somo_index-2}'
         elif key == 'LUMO':
             key = f'MO{self.somo_index+2}'
+        elif key == 'LUMO+1':
+            key = f'MO{self.somo_index+3}'
         basis = self.mos.get(key)
         atom_centres = np.array(basis[:, :-1])
         atom_coefs = np.array(basis[:, -1])
@@ -415,11 +419,28 @@ class MODrawer(MolecularOrbitals):
                 nearest_neighbors = sorted_indices[1:3]
                 # Compute vectors from the current atom to its two nearest neighbors
                 vec1 = atom_centres[nearest_neighbors[0]] - centre
+                if len(nearest_neighbors) >= 2:
+                    vec2 = atom_centres[nearest_neighbors[1]] - centre
+                else:
+                    # Only one neighbour available (e.g. degenerate SOMO with 2 contributing
+                    # atoms) — construct a perpendicular vector from vec1 and an arbitrary axis
+                    z_axis = np.array([0, 0, 1])
+                    vec2 = np.cross(z_axis, vec1)
+                    if np.linalg.norm(vec2) < 1e-6:
+                        # vec1 is parallel to z — fall back to x-axis
+                        vec2 = np.cross(np.array([1, 0, 0]), vec1)
+                    vec2 /= np.linalg.norm(vec2)
+                '''
+                sorted_indices = np.argsort(distances)  # Sort distances, smallest first
+                nearest_neighbors = sorted_indices[1:3]
+                # Compute vectors from the current atom to its two nearest neighbors
+                vec1 = atom_centres[nearest_neighbors[0]] - centre
                 vec2 = atom_centres[nearest_neighbors[1]] - centre
+                '''
                 # compute the cross product
                 normal_vec = np.cross(vec1, vec2)
                 normal_vec /= np.linalg.norm(normal_vec)
-
+                
                 
                 global_z = np.array([0,0 ,1])
 
@@ -626,7 +647,7 @@ if __name__ == "__main__":
     savefig = MO_input.savefig
 
     # Build the path to Converged_orbitals/<Molecule>.out based on the script directory
-    out_file = os.path.join(script_dir, '..', 'test_molecules', 'Converged_orbitals', f'{Molecule}.out')
+    out_file = os.path.join(script_dir, '..', 'Test_Molecules_Final', 'Converged_orbitals', f'{Molecule}.out')
 
     if not os.path.exists(out_file):
         raise FileNotFoundError(f'Could not find output file: {out_file}')

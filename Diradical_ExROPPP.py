@@ -706,14 +706,8 @@ def energy(hopping,repulsion,fock_mat,density,orbs,ndocc):
     return 0.5 * (np.dot(density.flatten(), hopping.flatten()) + np.dot(density.flatten(), fock_mat.flatten()))
 
 def cartesian_operators(coords,hf_orbs):
-    natoms = coords.shape[0]
-    norbs = hf_orbs.shape[1]
-    dip1el = np.zeros((norbs,norbs,3))
-    for i in range(norbs):
-        for j in range(i,norbs):
-            for u in range(natoms):
-                dip1el[i,j,:] += hf_orbs[u,i] * coords[u,:] * hf_orbs[u,j] * tobohr
-                dip1el[j,i,:] = dip1el[i,j,:]
+    
+    dip1el = np.einsum('ui,uk,uj->ijk', hf_orbs, coords, hf_orbs) * tobohr
     
     x_operator = dip1el[:, :, 0]
     y_operator = dip1el[:, :, 1]
@@ -803,7 +797,7 @@ def delocalise_somos(orbs, i, j):
 
 
 #Main HF function
-def main_scf(file, params, maxcycles=5000, d_tol=1e-15):
+def main_scf(file, params, maxcycles=5000, d_tol=5e-15):
     '''
     Main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
     For molecules that struggle to converge, a level shift can be applied...
@@ -931,7 +925,7 @@ def main_scf(file, params, maxcycles=5000, d_tol=1e-15):
     orbs[:, [SOMO1, SOMO2]] = SOMOs_z_rot
     '''
     '''
-    print('\nDelocalising SOMOs')
+    print('\nLocalising SOMOs')
     orbs = delocalise_somos(orbs, SOMO1, SOMO2)
     density_rot = density(orbs, ndocc)
     fock_mat = fock(repulsion, hopping, density_rot, natoms_c, natoms_n, natoms, n_list)
@@ -5607,6 +5601,155 @@ def print_csf_info(ham_rot, norbs, ndocc, ci_type= 'XCIS'):
                 print(f"Energy of CSF {str}:", np.diag(ham_rot)[j])
    
 
+def diagonalise_xcis(ham_rot, ndocc, norbs, rng, nstates, out, ci_type='XCIS'):
+    """
+    Diagonalise the XCIS Hamiltonian by exploiting its block-diagonal structure
+    (singlet / triplet / quintet blocks), then merge and sort the results by
+    ascending energy.
+
+    Args:
+        ham_rot  : (nstates, nstates) ndarray — full XCIS Hamiltonian
+        ndocc    : int — number of doubly-occupied orbitals
+        nvirt    : int — number of virtual orbitals
+        rng      : int — number of lowest states requested (sparse path if rng < nstates)
+        nstates  : int — total number of states
+        out      : file handle for log output
+        ci_type  : str — type of CI calculation ('XCIS' or 'XCISD')
+
+    Returns:
+        ci_energies : (nstates,) or (rng,) ndarray — eigenvalues sorted low→high
+        ci_coeffs   : (nstates, nstates) or (nstates, rng) ndarray — eigenvectors,
+                      each column is a CI state in the full CSF basis
+    """
+
+    # ------------------------------------------------------------------
+    # 1. Compute block boundaries
+    # ------------------------------------------------------------------
+    nvirt = norbs - ndocc - 2
+    ndoc1 = int((ndocc ** 2 + ndocc) / 2)
+    ndcv1 = int((nvirt ** 2 + nvirt) / 2)
+    ndoc3 = ndocc ** 2 - ndoc1
+    ndcv3 = nvirt ** 2 - ndcv1
+    
+    if ci_type == 'XCIS':    
+        n_singlet = 2 * (ndocc * nvirt) + 2 * ndocc + 2 * nvirt + 3
+        n_triplet = 3 * (ndocc * nvirt) + 2 * ndocc + 2 * nvirt + 1
+    else:
+        n_singlet = ndoc1 + ndcv1 + 2 * (ndocc * nvirt) + 2 * ndocc + 2 * nvirt + 3
+        n_triplet = ndoc3 + ndcv3 + 3 * (ndocc * nvirt) + 2 * ndocc + 2 * nvirt + 1
+    n_quintet = ndocc * nvirt
+
+    assert n_singlet + n_triplet + n_quintet == nstates, (
+        f"Block sizes do not sum to nstates: "
+        f"{n_singlet} + {n_triplet} + {n_quintet} = "
+        f"{n_singlet + n_triplet + n_quintet} != {nstates}"
+    )
+
+    s_start, s_end = 0,                    n_singlet
+    t_start, t_end = n_singlet,            n_singlet + n_triplet
+    q_start, q_end = n_singlet + n_triplet, nstates
+
+    msg = (
+        f"Block-diagonalising XCIS Hamiltonian ...\n"
+        f"  Singlet block : rows {s_start}–{s_end-1}  ({n_singlet} states)\n"
+        f"  Triplet block : rows {t_start}–{t_end-1}  ({n_triplet} states)\n"
+        f"  Quintet block : rows {q_start}–{q_end-1}  ({n_quintet} states)\n"
+    )
+    print(msg)
+    out.write(msg)
+
+    # Slice the three diagonal blocks
+    H_s = ham_rot[s_start:s_end, s_start:s_end]
+    H_t = ham_rot[t_start:t_end, t_start:t_end]
+    H_q = ham_rot[q_start:q_end, q_start:q_end]
+
+    # ------------------------------------------------------------------
+    # 2. Diagonalise each block
+    # ------------------------------------------------------------------
+    if rng < nstates:
+        # Sparse path — request enough states from each block.
+        # We over-request proportionally then trim after merging.
+        # At minimum request 1 from each block, at most the full block size.
+        k_s = max(1, min(n_singlet - 1, int(np.ceil(rng * n_singlet / nstates)) + 10))
+        k_t = max(1, min(n_triplet - 1, int(np.ceil(rng * n_triplet / nstates)) + 10))
+        k_q = max(1, min(n_quintet - 1, int(np.ceil(rng * n_quintet / nstates)) + 10))
+
+        msg = (
+            f"Using sparse solver (eigsh) — requesting "
+            f"{k_s} singlets, {k_t} triplets, {k_q} quintets "
+            f"(targeting {rng} states total)\n"
+        )
+        print(msg)
+        out.write(msg)
+
+        e_s, v_s = sp.eigsh(H_s, k=k_s, which="SA")
+        e_t, v_t = sp.eigsh(H_t, k=k_t, which="SA")
+        e_q, v_q = sp.eigsh(H_q, k=k_q, which="SA")
+
+    else:
+        # Dense path — full diagonalisation of each block
+        msg = "Using dense solver (eigh) on each block ...\n"
+        print(msg)
+        out.write(msg)
+
+        e_s, v_s = linalg.eigh(H_s)
+        e_t, v_t = linalg.eigh(H_t)
+        e_q, v_q = linalg.eigh(H_q)
+
+    # ------------------------------------------------------------------
+    # 3. Embed block eigenvectors into the full CSF basis
+    #    Each column of ci_coeffs_block is a state vector of length nstates,
+    #    with zeros outside the relevant block.
+    # ------------------------------------------------------------------
+    def embed(v, start, total):
+        """Pad eigenvector matrix v into the full basis of size `total`."""
+        n_basis, n_vecs = v.shape
+        full = np.zeros((total, n_vecs))
+        full[start:start + n_basis, :] = v
+        return full          # shape: (nstates, n_vecs)
+
+    V_s = embed(v_s, s_start, nstates)   # (nstates, k_s or n_singlet)
+    V_t = embed(v_t, t_start, nstates)   # (nstates, k_t or n_triplet)
+    V_q = embed(v_q, q_start, nstates)   # (nstates, k_q or n_quintet)
+
+    # ------------------------------------------------------------------
+    # 4. Concatenate all eigenvalues/vectors and sort by energy
+    # ------------------------------------------------------------------
+    all_energies = np.concatenate([e_s, e_t, e_q])
+    all_coeffs   = np.concatenate([V_s, V_t, V_q], axis=1)  # (nstates, total_vecs)
+
+    sort_idx = np.argsort(all_energies)
+    all_energies = all_energies[sort_idx]
+    all_coeffs   = all_coeffs[:, sort_idx]
+
+    # ------------------------------------------------------------------
+    # 5. Trim to rng states if using the sparse path
+    # ------------------------------------------------------------------
+    if rng < nstates:
+        # Guard: if we didn't get enough states across blocks, warn and use what we have
+        n_available = len(all_energies)
+        if n_available < rng:
+            msg = (
+                f"Warning: only {n_available} states available after merging blocks "
+                f"(requested {rng}). Consider increasing over-request buffer.\n"
+            )
+            print(msg)
+            out.write(msg)
+            rng = n_available
+
+        all_energies = all_energies[:rng]
+        all_coeffs   = all_coeffs[:, :rng]
+
+    ci_energies = all_energies
+    ci_coeffs   = all_coeffs
+
+    msg = f"Diagonalisation complete. Returning {ci_energies.shape[0]} states.\n"
+    print(msg)
+    out.write(msg)
+
+    return ci_energies, ci_coeffs
+
+
 
 def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file, ci_type = "XCIS"):
     '''
@@ -5684,6 +5827,9 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
             out.write('Used energy cutoff of %04.2f eV for states. WARNING - Some states may not be included in spectrum.\n'%cutoff_energy)
         else:
             cutoff_energy = 100
+        
+        #ci_energies, ci_coeffs = diagonalise_xcis(ham_rot, ndocc, norbs, rng, nstates, out, ci_type=ci_type)
+        
         
         # Diagonalize CIS Hamiltonianfor first rng excited states
         if rng < nstates:
@@ -5880,7 +6026,7 @@ def rad_calc(file,params):
                 print("\nDensity Matrix:")
                 print(dens_mo)
                 sys.exit()
-    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_type = 'XCIS')
+    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_type = 'XCISD')
     return strngs, ci_energies_array, osc_arrays, s2_array  #return gnuplot data for plotting spectrum
 
 
