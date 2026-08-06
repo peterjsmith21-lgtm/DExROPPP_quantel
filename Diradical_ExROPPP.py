@@ -6,6 +6,8 @@ from datetime import datetime
 from subprocess import getoutput
 import sys
 from ExROPPP_settings_opt import *
+from DipBuilder import *
+from CIBuilder import *
 import os
 
 
@@ -924,13 +926,13 @@ def main_scf(file, params, maxcycles=5000, d_tol=5e-15):
     SOMOs_z_rot = np.dot(orbs[:, [SOMO1, SOMO2]], z_rotation)
     orbs[:, [SOMO1, SOMO2]] = SOMOs_z_rot
     '''
-    '''
-    print('\nLocalising SOMOs')
+    
+    print('\nDelocalising SOMOs')
     orbs = delocalise_somos(orbs, SOMO1, SOMO2)
     density_rot = density(orbs, ndocc)
     fock_mat = fock(repulsion, hopping, density_rot, natoms_c, natoms_n, natoms, n_list)
     energy2 = energy(hopping, repulsion, fock_mat, density_rot, orbs, ndocc)
-    '''
+    
     print('ENERGY0:', energy2)
     return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
 
@@ -5110,7 +5112,7 @@ def dipole_xcisd(coords,atoms,norbs,hf_orbs,ndocc,nstates):
     return dipoles
 
 
-def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type, csf_tol=0.01):
+def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_level, csf_tol=0.01):
     print("Energy of the lowest CI state:", ci_energies[0])
     osc_array1 = np.zeros_like(ci_energies)
     osc_array3 = np.zeros_like(ci_energies)
@@ -5130,7 +5132,90 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
         spin = 0 # initialise total spin
         for j in range (ci_coeffs.shape[0]): # Loop over configurations in each CIS state
                     
-            if ci_type == 'XCIS':
+            if ci_level == 0:
+                if j == 0: 
+                    str = "|1^OS>"
+                    # S^2 = 0
+                elif j == 1:
+                    str = "|ZW->"
+                    # S^2 = 0
+                elif j == 2:
+                    str = "|ZW+>"
+                    # S^2 = 0
+                elif j == 3:
+                    str = "|3^OS>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+                
+                if np.absolute(ci_coeffs[j,i]) > csf_tol:
+                    print("%s %10.5f" %(str, ci_coeffs[j,i]))
+                    out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
+            
+            elif ci_level == 1:
+            ### SINGLET CSFS ### 
+            # Open shell singlet ground state (|OS1>)
+                if j == 0: 
+                    str = "|1^OS>"
+                    # S^2 = 0
+            # Zwitterion - (|ZW->)    
+                elif j == 1:
+                    str = "|1^ZW->"
+                    # S^2 = 0
+            # Zwitterion 0' (|ZW+>)   
+                elif j == 2:
+                    str = "|1^ZW+>"
+                    # S^2 = 0
+            # Singlet core to SOMO 0 (|1^CS0>)
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0)>" 
+                    # S^2 = 0 
+            # Singlet core to SOMO 0' (|1^CS0'>)
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    str = f"|1^CS({iorb}->0')>" 
+                    # S^2 = 0
+            # Singlet SOMO 0 to virtual (|1^SV0>)
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    str = f"|1^SV(0->{iorb}')>"
+                    # S^2 = 0
+            # Singlet SOMO 0' to virtual (|1^SV0'>)
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    str = f"|1^SV(0'->{iorb}')>"
+                    # S^2 = 0
+                    
+            ### TRIPLET CSFs ###
+            # Triplet ground state (|OS3>)
+                elif j == (2 * nvirt + 2 * ndocc + 3): 
+                    str = "|3^OS>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet core to SOMO 0 (|3^CS0>)
+                elif j > (2 * nvirt + 2 * ndocc + 3) and j <= (2 * nvirt + 3 * ndocc + 3):
+                    iorb = (2 * nvirt + 3 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0)>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1) 
+            # Triplet core to SOMO 0' (|3^CS0'>)
+                elif j > (2 * nvirt + 3 * ndocc + 3) and j <= (2 * nvirt + 4 * ndocc + 3):
+                    iorb = (2 * nvirt + 4 * ndocc + 4) - j
+                    str = f"|3^CS({iorb}->0')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet SOMO 0 to virtual (|3^SV0>)
+                elif j > (2 * nvirt + 4 * ndocc + 3) and j <= (3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (2 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0->{iorb}')>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet SOMO 0' to virtual (|3^SV0'>)
+                elif j > (3 * nvirt + 4 * ndocc + 3) and j <= (4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (3 * nvirt + 4 * ndocc + 3)
+                    str = f"|3^SV(0'->{iorb}')>"
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+                
+                if np.absolute(ci_coeffs[j,i]) > csf_tol:
+                    print("%s %10.5f" %(str, ci_coeffs[j,i]))
+                    out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
+            
+            elif ci_level == 2:
             ########## SINGLET CSFS ##########   
             # Open shell singlet ground state (|OS1>)
                 if j == 0: 
@@ -5176,53 +5261,77 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
                     v_orb = ((j - ((ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
                     str = f"|1T^CV({o_orb}->{v_orb}')>" 
                     # S^2 = 0
+            # Singlet Zwitterionic Core to Virtual 0 (|1^ZCV0>)
+                elif j > (2*(ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (3 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2*(ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2*(ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1^ZCV0({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Zwitterionic Core to Virtual 0' (|1^ZCV0'>)
+                elif j > (3*(ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2) and j <= (4 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (3*(ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (3*(ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    str = f"|1^ZCV0'({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
             ########### TRIPLET CSFs ###########
             # Triplet ground state (|OS3>)
-                elif j == (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
+                elif j == (4 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3): 
                     str = "|3^OS>"
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Triplet core to SOMO 0 (|3^CS>)
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
-                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
+                elif j > (4 * (ndocc * nvirt) + 2 * nvirt + 2 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3):
+                    iorb = (4 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 4) - j
                     str = f"|3^CS({iorb}->0)>" 
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1) 
             # Triplet core to SOMO 0' (|3^CS>)
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
-                    iorb = (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
+                elif j > (4 * (ndocc * nvirt) + 2 * nvirt + 3 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3):
+                    iorb = (4 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 4) - j
                     str = f"|3^CS({iorb}->0')>" 
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Triplet SOMO 0 to virtual (|3^SV>)
-                elif j > (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
+                elif j > (4 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (4 * (ndocc * nvirt) + 2 * nvirt + 4 * ndocc + 3)
                     str = f"|3^SV(0->{iorb}')>"
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Triplet SOMO 0' to virtual (|3^SV>)
-                elif j > (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    iorb = j - (2 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
+                elif j > (4 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (4 * (ndocc * nvirt) + 3 * nvirt + 4 * ndocc + 3)
                     str = f"|3^SV(0'->{iorb}')>"
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
             # Triplet Core to Virtual 1 (|3T^CV>)
-                elif j > (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (2 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3T^CV({o_orb}->{v_orb}')>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet Core to Virtual 2 (|3S^CV>)
-                elif j > (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
-                    o_orb = ndocc - ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
-                    v_orb = ((j - (3 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3S^CV({o_orb}->{v_orb}')>" 
-                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Triplet Core to Virtual 3 (|3X^CV>)
                 elif j > (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
                     o_orb = ndocc - ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
                     v_orb = ((j - (4 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
-                    str = f"|3X^CV({o_orb}->{v_orb}')>" 
+                    str = f"|3T^CV({o_orb}->{v_orb}')>" 
                     spin += 2 * ci_coeffs[j,i]**2 # (S=1)
-            # Quintet Core to Virtual (|5^CV>)
-                elif j > (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+            # Triplet Core to Virtual 2 (|3S^CV>)
+                elif j > (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (6 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
                     o_orb = ndocc - ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
                     v_orb = ((j - (5 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3S^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet Core to Virtual 3 (|3X^CV>)
+                elif j > (6 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (7 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (6 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (6 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3X^CV({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet Zwitterionic Core to Virtual 0 (|3^ZCV0>)
+                elif j > (7 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (8 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (7 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (7 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3^ZCV0({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Triplet Zwitterionic Core to Virtual 0' (|3^ZCV0'>)
+                elif j > (8 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3) and j <= (9 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (9 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (9 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    str = f"|3^ZCV0'({o_orb}->{v_orb}')>" 
+                    spin += 2 * ci_coeffs[j,i]**2 # (S=1)
+            # Quintet Core to Virtual (|5^CV>)
+                elif j > (9 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (9 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (9 * (ndocc * nvirt) + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
                     str = f"|5^CV({o_orb}->{v_orb}')>" 
                     spin += 6 * ci_coeffs[j,i]**2 # (S=2)
                     
@@ -5230,7 +5339,7 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cut
                     print("%s %10.5f" %(str, ci_coeffs[j,i]))
                     out_file.write("%s %10.5f \n" %(str, ci_coeffs[j,i]))
 
-            elif ci_type == 'XCISD':
+            elif ci_level == 3:
             ########## SINGLET CSFS ##########   
             # Open shell singlet ground state (|OS1>)
                 if j == 0: 
@@ -5751,7 +5860,7 @@ def diagonalise_xcis(ham_rot, ndocc, norbs, rng, nstates, out, ci_type='XCIS'):
 
 
 
-def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file, ci_type = "XCIS"):
+def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file, ci_level):
     '''
     Calculates monoradical excited states in rotated (CSF) basis using the CIS or XCIS method. Used for molecules without Nitrogen or Chlorine present.
     
@@ -5798,10 +5907,9 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
                             print(f"({p}, {q} | {r}, {s}) {val:15.8f}")
         '''
         # Construct CIS Hamiltonian
-        if ci_type == 'XCIS':
-            ham_rot = hetero_xcis_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens)
-        elif ci_type == 'XCISD':
-            ham_rot = hetero_xcisd_ham_rot(ndocc, norbs, energy0, orb_energies, rep_tens)
+        ham_rot, singlet_block, triplet_block = get_full_CIMatrix(ndocc, norbs, energy0, orb_energies, rep_tens, ci_level)
+        np.set_printoptions(precision=3, suppress=True)
+        #print('CI Hamiltonian:\n', ham_rot)
             
         print('Dimensions of CI matrix:', ham_rot.shape)
         print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
@@ -5844,10 +5952,8 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         
 
         # Calculate transition dipole moment matrix
-        if ci_type == 'XCIS':
-            dip_array = dipole_xcis(coords,atoms,norbs,hf_orbs,ndocc,nstates)
-        elif ci_type == 'XCISD':
-            dip_array = dipole_xcisd(coords,atoms,norbs,hf_orbs,ndocc,nstates)
+        dip_array = get_full_TDM(ndocc, norbs, coords, hf_orbs, ci_level=1)[0]
+
         
         print("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... ")
         print(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
@@ -5862,7 +5968,7 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         tdms = (state0_tdms, state1_tdms) 
         
         # Print information about CI states
-        strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_type=ci_type, csf_tol=0.05)
+        strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_level, csf_tol=0.05)
         strngs = (strngs[0][1:], strngs[1][1:])
     return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
 
@@ -6026,7 +6132,7 @@ def rad_calc(file,params):
                 print("\nDensity Matrix:")
                 print(dens_mo)
                 sys.exit()
-    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_type = 'XCISD')
+    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_level=1)
     return strngs, ci_energies_array, osc_arrays, s2_array  #return gnuplot data for plotting spectrum
 
 
