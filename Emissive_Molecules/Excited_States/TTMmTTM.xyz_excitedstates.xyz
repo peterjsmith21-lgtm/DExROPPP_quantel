@@ -1,0 +1,5 @@
+------------------------Starting ExROPPP calculation for diradical in rotated basis------------------------
+Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... 
+Frobenius norm of matrix - matrix transpose = 0.000000.
+Lowest 200 states. WARNING - Some states may not be included in the spectrum.
+Using sparse solver (eigsh) — requesting 91 singlets, 110 triplets, 30 quintets (targeting 200 states total)

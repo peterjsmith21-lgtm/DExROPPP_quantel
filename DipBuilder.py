@@ -31,25 +31,24 @@ def build_singlet_ref_block(ndocc, dip1el):
     TDM = np.zeros((3,3,3))  # Initialize a 3x3x3 Transition Dipole Matrix
     SOMO1 = ndocc # Index of SOMO1
     SOMO2 = ndocc + 1 # Index of SOMO2
+    
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
 
     # <OS1|mu|OS1>
-    for o in range(ndocc):
-        TDM[0,0,:] -= 2*dip1el[o,o,:]
+    TDM[0,0,:] = ndocc_sum
     TDM[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
     # <OS1|mu|ZW->  = 0
     # <OS1|mu|ZW+> 
     TDM[0,2,:] = - 2 * dip1el[SOMO1,SOMO2,:]
     
     # <ZW-|mu|ZW->
-    for o in range(ndocc):
-        TDM[1,1,:] -= 2*dip1el[o,o,:]
+    TDM[1,1,:] = ndocc_sum
     TDM[1,1,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
     # <ZW-|mu|ZW+>
     TDM[1,2,:] = - (dip1el[SOMO1,SOMO1,:] - dip1el[SOMO2,SOMO2,:])
     
     # <ZW+|mu|ZW+>
-    for o in range(ndocc):
-        TDM[2,2,:] -= 2*dip1el[o,o,:]
+    TDM[2,2,:] = ndocc_sum
     TDM[2,2,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:]) #Adding contribution from SOMOs
     
     return TDM
@@ -73,6 +72,8 @@ def build_singlet_CS_SV_block(ndocc, norbs, dip1el):
     col_dim = 2 * ndocc + 2 * nvirt
     TDM = np.zeros((row_dim, col_dim, 3))  # Initialize TDM Block
 
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
+    
     # <OS1|mu|CS0>
     for col in range(0, ndocc):
         o_orb = col
@@ -131,9 +132,9 @@ def build_singlet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - row_index, ndocc):
             o_orb2 = col
             if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    TDM[row,col,:] -= 2 * dip1el[o, o, :]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                TDM[row,col,:] -= 2 * dip1el[SOMO1, SOMO1, :] # Add contribution from 2e in SOMO1
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
             else:    
                 TDM[row,col,:] = dip1el[o_orb1, o_orb2, :] 
@@ -152,8 +153,7 @@ def build_singlet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - 3, 2*ndocc):
             o_orb2 = col - ndocc
             if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o, o, :]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
                 TDM[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
@@ -169,8 +169,7 @@ def build_singlet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - 3, 2*ndocc + nvirt):
             v_orb2 = col - (2*ndocc) + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
             else:    
@@ -188,8 +187,7 @@ def build_singlet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - 3, 2*ndocc + 2*nvirt):
             v_orb2 = col - (2*ndocc + nvirt) + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o, o, :]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
             else:    
@@ -221,6 +219,8 @@ def build_singlet_HL_block(ndocc, norbs, dip1el):
     col_dim = 4 * (npairs)
     TDM = np.zeros((row_dim, col_dim, 3))  # Initialize CI Block
 
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
+    
     # <OS1|H|HL1>
     for col in range(0, npairs):
         o_orb = col // nvirt # Increase o_orb after every ndocc cols
@@ -359,8 +359,7 @@ def build_singlet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = col // nvirt
             v_orb2 = col % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :]
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :]
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :]
@@ -392,8 +391,7 @@ def build_singlet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = (col - npairs) // nvirt
             v_orb2 = (col - npairs) % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :]
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :]
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :]
@@ -414,8 +412,7 @@ def build_singlet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = (col - 2*npairs) // nvirt
             v_orb2 = (col - 2*npairs) % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :]
                 TDM[row,col,:] -= 2 * dip1el[SOMO1, SOMO1, :]
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :]
@@ -434,8 +431,7 @@ def build_singlet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = (col - 3*npairs) // nvirt
             v_orb2 = (col - 3*npairs) % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :]
                 TDM[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :]
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :]
@@ -443,6 +439,235 @@ def build_singlet_HL_block(ndocc, norbs, dip1el):
                 TDM[row, col, :] = dip1el[o_orb1, o_orb2, :]
             elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
                 TDM[row, col, :] = - dip1el[v_orb1, v_orb2, :]
+    
+    return TDM
+
+
+def build_singlet_D_block(ndocc, norbs, dip1el):
+    '''
+    Function to build the upper diagonal of the CI matrix for doubly excited states (HOMO to SOMO & SOMO to LUMO) for a diradical system.
+    Args:
+        ndocc (int): Number of doubly occupied orbitals
+        norbs (int): Total number of orbitals
+        energy0 (float): Base energy of the mean-field reference state
+        orb_energies (numpy.ndarray): Orbital energies for the system
+        rep_tens (numpy.ndarray): Representation tensor for the system
+    Returns:
+        numpy.ndarray: CI matrix for the diradical system
+    '''
+    # Calculate the size of the CI matrix based on the number of doubly occupied orbitals
+    SOMO1 = ndocc # Index of SOMO1
+    SOMO2 = ndocc + 1 # Index of SOMO2
+    nvirt = norbs - ndocc - 2 # Number of virtual orbitals
+    npairs = ndocc * nvirt
+    ndcs = int((ndocc ** 2 + ndocc) / 2) # Number of doubly excited core to SOMO singlet CSFs
+    ndsv = int((nvirt ** 2 + nvirt) / 2) # Number of doubly excited SOMO to virtual singlet CSFs
+    
+    row_dim = ndcs + ndsv + 4 * (npairs) + 2 * ndocc + 2 * nvirt + 3
+    col_dim = ndcs + ndsv
+    TDM = np.zeros((row_dim, col_dim, 3))  # Initialize CI Block
+
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
+    
+    # <OS1|H|CSD> = 0
+    # <OS1|H|SVD> = 0
+    
+    # <ZW-|H|CSD> = 0
+    # <ZW-|H|SVD> = 0
+        
+    # <ZW+|H|CSD> = 0
+    # <ZW+|H|SVD> = 0
+
+    
+    row_index = 3
+    for row in range(row_index, row_index + ndocc):
+        o_orb1 = row - row_index
+        o_orb2 = 0
+        o_orb3 = 0
+        # <CS0|H|CSD>
+        for col in range(0, ndcs):
+            if o_orb2 == o_orb3:
+                if o_orb1 == o_orb2:
+                    TDM[row, col, :] = - np.sqrt(2) * dip1el[o_orb1, SOMO2, :]
+            else:
+                if o_orb1 == o_orb2:
+                    TDM[row, col, :] = - dip1el[o_orb3, SOMO2, :]
+                elif o_orb1 == o_orb3:
+                    TDM[row, col, :] = - dip1el[o_orb2, SOMO2, :]
+            o_orb3 += 1
+            if o_orb3 == ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2
+        # <CS0|H|SVD> = 0
+    
+    row_index = ndocc + 3
+    for row in range(row_index, row_index + ndocc):
+        o_orb1 = row - row_index
+        o_orb2 = 0
+        o_orb3 = 0
+        # <CS0'|H|CSD>
+        for col in range(0, ndcs):
+            if o_orb2 == o_orb3:
+                if o_orb1 == o_orb2:
+                    TDM[row, col, :] = np.sqrt(2) * dip1el[o_orb1, SOMO1, :]
+            else:
+                if o_orb1 == o_orb2:
+                    TDM[row, col, :] = dip1el[o_orb3, SOMO1, :]
+                elif o_orb1 == o_orb3:
+                    TDM[row, col, :] = dip1el[o_orb2, SOMO1, :]
+            o_orb3 += 1
+            if o_orb3 == ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2
+        # <CS0'|H|SVD> = 0
+    
+    row_index = 2 * ndocc + 3
+    for row in range(row_index, row_index + nvirt):
+        # <SV0|H|CSD> = 0
+        v_orb1 = row - row_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 1
+        # <SV0|H|SVD>
+        for col in range(ndcs, ndcs + ndsv):
+            if v_orb2 == v_orb3:
+                if v_orb1 == v_orb2:
+                    TDM[row, col, :] = - np.sqrt(2) * dip1el[SOMO2, v_orb1, :]
+            else:
+                if v_orb1 == v_orb2:
+                    TDM[row, col, :] = - dip1el[SOMO2, v_orb3, :]
+                elif v_orb1 == v_orb3:
+                    TDM[row, col, :] = - dip1el[SOMO2, v_orb2, :]
+            v_orb3 += 1
+            if v_orb3 == norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2
+
+                
+    row_index = 2 * ndocc + nvirt + 3
+    for row in range(row_index, row_index + nvirt):
+        # <SV0'|H|CSD> = 0
+        v_orb1 = row - row_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 1
+        # <SV0'|H|SVD>
+        for col in range(ndcs, ndcs + ndsv):
+            if v_orb2 == v_orb3:
+                if v_orb1 == v_orb2:
+                    TDM[row, col, :] = np.sqrt(2) * dip1el[SOMO1, v_orb1, :]
+            else:
+                if v_orb1 == v_orb2:
+                    TDM[row, col, :] = dip1el[SOMO1, v_orb3, :]
+                elif v_orb1 == v_orb3:
+                    TDM[row, col, :] = dip1el[SOMO1, v_orb2, :]
+            v_orb3 += 1
+            if v_orb3 == norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2
+    
+    # <HL1|H|CSD> = 0
+    # <HL1|H|SVD> = 0
+
+    # <HL2|H|CSD> = 0
+    # <HL2|H|SLD> = 0
+
+    # <ZHL1|H|CSD> = 0
+    # <ZHL1|H|SVD> = 0
+    
+    # <ZHL2|H|CSD> = 0
+    # <ZHL2|H|SVD> = 0
+    
+    
+    row_index = 4 * npairs + 2 * ndocc + 2 * nvirt + 3
+    o_orb1 = 0
+    o_orb2 = 0
+    for row in range(row_index, row_index + ndcs):
+        o_orb3 = o_orb1
+        o_orb4 = o_orb2
+        # <HSD|H|HSD>
+        for col in range(row - row_index, ndcs):
+            if o_orb1 == o_orb2 and o_orb3 == o_orb4:
+                if o_orb1 == o_orb3:
+                    TDM[row,col,:] = ndocc_sum
+                    TDM[row, col, :] += 2 * dip1el[o_orb1,o_orb1,:]
+                    TDM[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
+                    TDM[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
+            elif o_orb1 == o_orb2 and o_orb3 != o_orb4:
+                if o_orb1 == o_orb3:
+                    TDM[row, col, :] = np.sqrt(2) * dip1el[o_orb1, o_orb4, :]
+                elif o_orb1 == o_orb4:
+                    TDM[row, col, :] = np.sqrt(2) * dip1el[o_orb1, o_orb3, :]
+            elif o_orb3 == o_orb4 and o_orb1 != o_orb2:
+                if o_orb3 == o_orb1:
+                    TDM[row, col, :] = np.sqrt(2) * dip1el[o_orb3, o_orb2, :]
+                elif o_orb3 == o_orb2:
+                    TDM[row, col, :] = np.sqrt(2) * dip1el[o_orb3, o_orb1, :]
+            else:
+                if o_orb1 == o_orb3 and o_orb2 == o_orb4:
+                    TDM[row,col,:] = ndocc_sum
+                    TDM[row, col, :] += dip1el[o_orb1,o_orb1,:] + dip1el[o_orb2, o_orb2, :]
+                    TDM[row, col, :] -= 2 * dip1el[SOMO1, SOMO1, :]
+                    TDM[row, col, :] -= 2 * dip1el[SOMO2, SOMO2, :]
+                elif o_orb1 == o_orb3 and o_orb2 != o_orb4:
+                    TDM[row,col,:] = dip1el[o_orb2, o_orb4, :]
+                elif o_orb2 == o_orb4 and o_orb1 != o_orb3:
+                    TDM[row,col,:] = dip1el[o_orb1, o_orb3, :]
+                elif o_orb1 == o_orb4 and o_orb2 != o_orb3:
+                    TDM[row,col,:] = dip1el[o_orb2, o_orb3, :]
+                elif o_orb2 == o_orb3 and o_orb1 != o_orb4:
+                    TDM[row,col,:] = dip1el[o_orb1, o_orb4, :]
+            o_orb4 += 1
+            if o_orb4 == ndocc:
+                o_orb3 += 1
+                o_orb4 = o_orb3
+        # <HSD|H|SVD> = 0
+        o_orb2 += 1
+        if o_orb2 == ndocc:
+            o_orb1 += 1
+            o_orb2 = o_orb1
+    
+    row_index = ndcs + 4 * npairs + 2 * ndocc + 2 * nvirt + 3
+    v_orb1 = SOMO2 + 1
+    v_orb2 = SOMO2 + 1
+    for row in range(row_index, row_index + ndsv):
+        v_orb3 = v_orb1
+        v_orb4 = v_orb2
+        # <SVD|H|SVD>
+        for col in range(row - row_index + ndcs, ndcs + ndsv):
+            if v_orb1 == v_orb2 and v_orb3 == v_orb4:
+                if v_orb1 == v_orb3:
+                    TDM[row, col, :] = ndocc_sum
+                    TDM[row, col, :] -= 2 * dip1el[v_orb1, v_orb1, :]
+            elif v_orb1 == v_orb2 and v_orb3 != v_orb4:
+                if v_orb1 == v_orb3:
+                    TDM[row, col, :] = - np.sqrt(2) * dip1el[v_orb1, v_orb4, :]
+                elif v_orb1 == v_orb4:
+                    TDM[row, col, :] = - np.sqrt(2) * dip1el[v_orb1, v_orb3, :]
+            elif v_orb1 != v_orb2 and v_orb3 == v_orb4:
+                if v_orb3 == v_orb1:
+                    TDM[row, col, :] = - np.sqrt(2) * dip1el[v_orb3, v_orb2, :]
+                elif v_orb3 == v_orb2:
+                    TDM[row, col, :] = - np.sqrt(2) * dip1el[v_orb3, v_orb1, :]
+            else:
+                if v_orb1 == v_orb3 and v_orb2 == v_orb4:
+                    TDM[row, col, :] = ndocc_sum
+                    TDM[row, col, :] -= dip1el[v_orb1, v_orb1, :]
+                    TDM[row, col, :] -= dip1el[v_orb2, v_orb2, :]
+                elif v_orb1 == v_orb3 and v_orb2 != v_orb4:
+                    TDM[row, col, :] = - dip1el[v_orb2, v_orb4, :]
+                elif v_orb1 != v_orb3 and v_orb2 == v_orb4:
+                    TDM[row, col, :] = - dip1el[v_orb1, v_orb3, :]
+                elif v_orb1 == v_orb4 and v_orb2 != v_orb3:
+                    TDM[row,col,:] = - dip1el[v_orb2, v_orb3, :]
+                elif v_orb2 == v_orb3 and v_orb1 != v_orb4:
+                    TDM[row,col,:] = - dip1el[v_orb1, v_orb4, :]
+            v_orb4 += 1
+            if v_orb4 == norbs:
+                v_orb3 += 1
+                v_orb4 = v_orb3
+        v_orb2 += 1
+        if v_orb2 == norbs:
+            v_orb1 += 1
+            v_orb2 = v_orb1
     
     return TDM
 
@@ -462,10 +687,11 @@ def build_triplet_ref_block(ndocc, dip1el):
     TDM = np.zeros((1, 1, 3))  # Initialize a 1x1 CI matrix
     SOMO1 = ndocc # Index of SOMO1
     SOMO2 = ndocc + 1 # Index of SOMO2
+    
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
 
     # <OS3|H|OS3>
-    for o in range(ndocc):
-        TDM[0,0,:] -= 2*dip1el[o,o,:]
+    TDM[0,0,:] = ndocc_sum
     TDM[0,0,:] -= (dip1el[SOMO1,SOMO1,:] + dip1el[SOMO2,SOMO2,:])
 
     return TDM
@@ -488,6 +714,8 @@ def build_triplet_CS_SV_block(ndocc, norbs, dip1el):
     row_dim = 2 * ndocc + 2 * nvirt + 1
     col_dim = 2 * ndocc + 2 * nvirt
     TDM = np.zeros((row_dim, col_dim, 3))  # Initialize TDM Block
+    
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
     
     # <OS3|H|CS0>
     for col in range(0, ndocc):
@@ -513,9 +741,9 @@ def build_triplet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - 1, ndocc):
             o_orb2 = col
             if o_orb1 == o_orb2:
-                for o in range(ndocc + 1): #Include contribution from 2e in SOMO1
-                    TDM[row,col,:] -= 2 * dip1el[o, o, :]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
+                TDM[row,col,:] -= 2 * dip1el[SOMO1, SOMO1, :] # Add contribution from 2e in SOMO1
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
             else:    
                 TDM[row,col,:] = dip1el[o_orb1, o_orb2, :] 
@@ -534,8 +762,7 @@ def build_triplet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - 1, 2*ndocc):
             o_orb2 = col - ndocc
             if o_orb1 == o_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o, o, :]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
                 TDM[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 2e in SOMO2
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
@@ -551,8 +778,7 @@ def build_triplet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - 1, 2*ndocc + nvirt):
             v_orb2 = col - (2*ndocc) + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o, o, :]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
             else:    
@@ -570,8 +796,7 @@ def build_triplet_CS_SV_block(ndocc, norbs, dip1el):
         for col in range(row - 1, 2*ndocc + 2*nvirt):
             v_orb2 = col - (2*ndocc + nvirt) + (SOMO2 + 1)
             if v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o, o, :]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :] # Add contribution from 1e in LUMO j
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
             else:    
@@ -601,6 +826,8 @@ def build_triplet_HL_block(ndocc, norbs, dip1el):
     row_dim = 5 * (npairs) + 2 * ndocc + 2 * nvirt + 1
     col_dim = 5 * (npairs)
     TDM = np.zeros((row_dim, col_dim, 3))  # Initialize CI Block
+    
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
 
     # <OS3|H|HL1>
     for col in range(0, npairs):
@@ -739,8 +966,7 @@ def build_triplet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = col // nvirt
             v_orb2 = col % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
@@ -764,8 +990,7 @@ def build_triplet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = (col - npairs) // nvirt
             v_orb2 = (col - npairs) % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
@@ -797,8 +1022,7 @@ def build_triplet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = (col - 2*npairs) // nvirt
             v_orb2 = (col - 2*npairs) % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
                 TDM[row,col,:] -= dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
                 TDM[row,col,:] -= dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO2
@@ -819,8 +1043,7 @@ def build_triplet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = (col - 3*npairs) // nvirt
             v_orb2 = (col - 3*npairs) % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
                 TDM[row,col,:] -= 2 * dip1el[SOMO1, SOMO1, :] # Add contribution from 1e in SOMO1
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :]
@@ -839,8 +1062,7 @@ def build_triplet_HL_block(ndocc, norbs, dip1el):
             o_orb2 = (col - 4*npairs) // nvirt
             v_orb2 = (col - 4*npairs) % nvirt + (SOMO2 + 1)
             if o_orb1 == o_orb2 and v_orb1 == v_orb2:
-                for o in range(ndocc):
-                    TDM[row,col,:] -= 2 * dip1el[o,o,:]
+                TDM[row,col,:] = ndocc_sum
                 TDM[row,col,:] += dip1el[o_orb1, o_orb1, :] # Remove contribution from 1e in HOMO i
                 TDM[row,col,:] -= 2 * dip1el[SOMO2, SOMO2, :] # Add contribution from 1e in SOMO1
                 TDM[row,col,:] -= dip1el[v_orb1, v_orb1, :]
@@ -848,6 +1070,179 @@ def build_triplet_HL_block(ndocc, norbs, dip1el):
                 TDM[row, col, :] = dip1el[o_orb1, o_orb2, :]
             elif o_orb1 == o_orb2 and v_orb1 != v_orb2:
                 TDM[row, col, :] = - dip1el[v_orb1, v_orb2, :]
+    
+    return TDM
+
+def build_triplet_D_block(ndocc, norbs, dip1el):
+    '''
+    Function to build the upper diagonal of the CI matrix for doubly excited states (HOMO to SOMO & SOMO to LUMO) for a diradical system.
+    Args:
+        ndocc (int): Number of doubly occupied orbitals
+        norbs (int): Total number of orbitals
+        energy0 (float): Base energy of the mean-field reference state
+        orb_energies (numpy.ndarray): Orbital energies for the system
+        rep_tens (numpy.ndarray): Representation tensor for the system
+    Returns:
+        numpy.ndarray: CI matrix for the diradical system
+    '''
+    # Calculate the size of the CI matrix based on the number of doubly occupied orbitals
+    SOMO1 = ndocc # Index of SOMO1
+    SOMO2 = ndocc + 1 # Index of SOMO2
+    nvirt = norbs - ndocc - 2 # Number of virtual orbitals
+    npairs = ndocc * nvirt
+    ndcs = int((ndocc ** 2 - ndocc) / 2) # Number of doubly excited core to SOMO singlet CSFs
+    ndsv = int((nvirt ** 2 - nvirt) / 2) # Number of doubly excited SOMO to virtual singlet CSFs
+    
+    row_dim = ndcs + ndsv + 5 * (npairs) + 2 * ndocc + 2 * nvirt + 1
+    col_dim = ndcs + ndsv
+    TDM = np.zeros((row_dim, col_dim, 3))  # Initialize CI Block
+
+    # <OS3|H|CSD> = 0
+    # <OS1|H|SVD> = 0
+    
+    ndocc_sum = - 2.0 * dip1el[np.arange(ndocc), np.arange(ndocc), :].sum(axis=0)
+
+    
+    row_index = 1
+    for row in range(row_index, row_index + ndocc):
+        o_orb1 = row - row_index
+        o_orb2 = 0
+        o_orb3 = 1
+        # <CS0|H|CSD>
+        for col in range(0, ndcs):
+            if o_orb1 == o_orb2:
+                TDM[row, col, :] = - dip1el[o_orb3, SOMO2, :]
+            elif o_orb1 == o_orb3:
+                TDM[row, col, :] = dip1el[o_orb2, SOMO2, :]
+            o_orb3 += 1
+            if o_orb3 >= ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2 + 1
+        # <CS0|H|SVD> = 0
+    
+    row_index = ndocc + 1
+    for row in range(row_index, row_index + ndocc):
+        o_orb1 = row - row_index
+        o_orb2 = 0
+        o_orb3 = 1
+        # <CS0'|H|CSD>
+        for col in range(0, ndcs):
+            if o_orb1 == o_orb2:
+                TDM[row, col, :] = dip1el[o_orb3, SOMO1, :]
+            elif o_orb1 == o_orb3:
+                TDM[row, col, :] = - dip1el[o_orb2, SOMO1, :]
+            o_orb3 += 1
+            if o_orb3 >= ndocc:
+                o_orb2 += 1
+                o_orb3 = o_orb2 + 1
+        # <CS0'|H|SVD> = 0
+    
+    row_index = 2 * ndocc + 1
+    for row in range(row_index, row_index + nvirt):
+        # <SV0|H|CSD> = 0
+        v_orb1 = row - row_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 2
+        # <SV0|H|SVD>
+        for col in range(ndcs, ndcs + ndsv):
+            if v_orb1 == v_orb2:
+                TDM[row, col, :] = - dip1el[v_orb3, SOMO2, :]
+            elif v_orb1 == v_orb3:
+                TDM[row, col, :] = dip1el[v_orb2, SOMO2, :]
+            v_orb3 += 1
+            if v_orb3 >= norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2 + 1
+
+                
+    row_index = 2 * ndocc + nvirt + 1
+    for row in range(row_index, row_index + nvirt):
+        # <SV0'|H|CSD> = 0
+        v_orb1 = row - row_index + (SOMO2 + 1)
+        v_orb2 = SOMO2 + 1
+        v_orb3 = SOMO2 + 2
+        # <SV0'|H|SVD>
+        for col in range(ndcs, ndcs + ndsv):
+            if v_orb1 == v_orb2:
+                TDM[row, col, :] = - dip1el[v_orb3, SOMO1, :]
+            elif v_orb1 == v_orb3:
+                TDM[row, col, :] = dip1el[v_orb2, SOMO1, :]
+            v_orb3 += 1
+            if v_orb3 >= norbs:
+                v_orb2 += 1
+                v_orb3 = v_orb2 + 1
+    
+    # <HL1|H|CSD> = 0
+    # <HL1|H|SVD> = 0
+    
+    # <HL2|H|CSD> = 0
+    # <HL2|H|SLD> = 0
+
+    # <HL3|H|CSD> = 0
+    # <HL3|H|SLD> = 0
+
+    # <ZHL1|H|CSD> = 0
+    # <ZHL1|H|SVD> = 0
+
+    # <ZHL2|H|CSD> = 0
+    # <ZHL2|H|SVD> = 0
+    
+    
+    row_index = 5 * npairs + 2 * ndocc + 2 * nvirt + 1
+    o_orb1 = 0
+    o_orb2 = 1
+    for row in range(row_index, row_index + ndcs):
+        o_orb3 = o_orb1
+        o_orb4 = o_orb2
+        # <CSD|H|CSD>
+        for col in range(row - row_index, ndcs):
+            if o_orb1 == o_orb3 and o_orb2 == o_orb4:
+                TDM[row, col, :] = ndocc_sum
+                TDM[row, col, :] += dip1el[o_orb1,o_orb1,:] + dip1el[o_orb2,o_orb2,:]
+                TDM[row, col, :] -= 2 * dip1el[SOMO1,SOMO1,:]
+                TDM[row, col, :] -= 2 * dip1el[SOMO2,SOMO2,:]
+            elif o_orb1 == o_orb3 and o_orb2 != o_orb4:
+                TDM[row,col,:] = dip1el[o_orb2, o_orb4, :]
+            elif o_orb2 == o_orb4 and o_orb1 != o_orb3:
+                TDM[row,col,:] = dip1el[o_orb1, o_orb3, :]
+            elif o_orb2 == o_orb3 and o_orb1 != o_orb4:
+                TDM[row,col,:] = - dip1el[o_orb1, o_orb4, :]
+            o_orb4 += 1
+            if o_orb4 >= ndocc:
+                o_orb3 += 1
+                o_orb4 = o_orb3 + 1
+        # <CSD|H|SVD> = 0
+        o_orb2 += 1
+        if o_orb2 >= ndocc:
+            o_orb1 += 1
+            o_orb2 = o_orb1 + 1
+    
+    row_index = ndcs + 5 * npairs + 2 * ndocc + 2 * nvirt + 1
+    v_orb1 = SOMO2 + 1
+    v_orb2 = SOMO2 + 2
+    for row in range(row_index, row_index + ndsv):
+        v_orb3 = v_orb1
+        v_orb4 = v_orb2
+        # <SVD|H|SVD>
+        for col in range(row - row_index + ndcs, ndcs + ndsv):
+            if v_orb1 == v_orb3 and v_orb2 == v_orb4:
+                TDM[row, col, :] = ndocc_sum
+                TDM[row, col, :] -= dip1el[v_orb1, v_orb1, :]
+                TDM[row, col, :] -= dip1el[v_orb2, v_orb2, :]
+            elif v_orb1 == v_orb3 and v_orb2 != v_orb4:
+                TDM[row, col, :] = - dip1el[v_orb2, v_orb4, :]
+            elif v_orb1 != v_orb3 and v_orb2 == v_orb4:
+                TDM[row, col, :] = - dip1el[v_orb1, v_orb3, :]
+            elif v_orb2 == v_orb3 and v_orb1 != v_orb4:
+                TDM[row, col, :] = dip1el[v_orb1, v_orb4, :] 
+            v_orb4 += 1
+            if v_orb4 >= norbs:
+                v_orb3 += 1
+                v_orb4 = v_orb3 + 1
+        v_orb2 += 1
+        if v_orb2 >= norbs:
+            v_orb1 += 1
+            v_orb2 = v_orb1 + 1
     
     return TDM
 
@@ -902,9 +1297,21 @@ def build_singlet_TDM(ndocc, norbs, dip1el, ci_level):
         hl_block = build_singlet_HL_block(ndocc, norbs, dip1el)
         
         Singlet_TDM = np.zeros((hl_block.shape[0], hl_block.shape[0], 3))
-        Singlet_TDM[:ref_block.shape[0], :ref_block.shape[1]] = ref_block
-        Singlet_TDM[:cs_sv_block.shape[0], ref_block.shape[1]:(ref_block.shape[1]+cs_sv_block.shape[1])] = cs_sv_block
-        Singlet_TDM[:hl_block.shape[0], (ref_block.shape[1]+cs_sv_block.shape[1]):] = hl_block
+        Singlet_TDM[:ref_block.shape[0], :ref_block.shape[1], :] = ref_block
+        Singlet_TDM[:cs_sv_block.shape[0], ref_block.shape[1]:(ref_block.shape[1]+cs_sv_block.shape[1]), :] = cs_sv_block
+        Singlet_TDM[:hl_block.shape[0], (ref_block.shape[1]+cs_sv_block.shape[1]):, :] = hl_block
+    
+    elif ci_level == 3:
+        ref_block = build_singlet_ref_block(ndocc, dip1el)
+        cs_sv_block = build_singlet_CS_SV_block(ndocc, norbs, dip1el)
+        hl_block = build_singlet_HL_block(ndocc, norbs, dip1el)
+        d_block = build_singlet_D_block(ndocc, norbs, dip1el)
+        
+        Singlet_TDM = np.zeros((d_block.shape[0], d_block.shape[0], 3))
+        Singlet_TDM[:ref_block.shape[0], :ref_block.shape[1], :] = ref_block
+        Singlet_TDM[:cs_sv_block.shape[0], ref_block.shape[1]:(ref_block.shape[1]+cs_sv_block.shape[1]), :] = cs_sv_block
+        Singlet_TDM[:hl_block.shape[0], (ref_block.shape[1]+cs_sv_block.shape[1]):(ref_block.shape[1]+cs_sv_block.shape[1]+hl_block.shape[1]), :] = hl_block
+        Singlet_TDM[:, (ref_block.shape[1]+cs_sv_block.shape[1]+hl_block.shape[1]):, :] = d_block
     
     
     idx = np.arange(Singlet_TDM.shape[0])
@@ -934,9 +1341,21 @@ def build_triplet_TDM(ndocc, norbs, dip1el, ci_level):
         hl_block = build_triplet_HL_block(ndocc, norbs, dip1el)
         
         Triplet_TDM = np.zeros((hl_block.shape[0], hl_block.shape[0], 3))
-        Triplet_TDM[:ref_block.shape[0], :ref_block.shape[1]] = ref_block
-        Triplet_TDM[:cs_sv_block.shape[0], ref_block.shape[1]:(ref_block.shape[1]+cs_sv_block.shape[1])] = cs_sv_block
-        Triplet_TDM[:hl_block.shape[0], (ref_block.shape[1]+cs_sv_block.shape[1]):] = hl_block
+        Triplet_TDM[:ref_block.shape[0], :ref_block.shape[1], :] = ref_block
+        Triplet_TDM[:cs_sv_block.shape[0], ref_block.shape[1]:(ref_block.shape[1]+cs_sv_block.shape[1]), :] = cs_sv_block
+        Triplet_TDM[:hl_block.shape[0], (ref_block.shape[1]+cs_sv_block.shape[1]):, :] = hl_block
+    
+    elif ci_level == 3:
+        ref_block = build_triplet_ref_block(ndocc, dip1el)
+        cs_sv_block = build_triplet_CS_SV_block(ndocc, norbs, dip1el)
+        hl_block = build_triplet_HL_block(ndocc, norbs, dip1el)
+        d_block = build_triplet_D_block(ndocc, norbs, dip1el)
+
+        Triplet_TDM = np.zeros((d_block.shape[0], d_block.shape[0], 3))
+        Triplet_TDM[:ref_block.shape[0], :ref_block.shape[1], :] = ref_block
+        Triplet_TDM[:cs_sv_block.shape[0], ref_block.shape[1]:(ref_block.shape[1]+cs_sv_block.shape[1]), :] = cs_sv_block
+        Triplet_TDM[:hl_block.shape[0], (ref_block.shape[1]+cs_sv_block.shape[1]):(ref_block.shape[1]+cs_sv_block.shape[1]+hl_block.shape[1]), :] = hl_block
+        Triplet_TDM[:, (ref_block.shape[1]+cs_sv_block.shape[1]+hl_block.shape[1]):, :] = d_block
     
     idx = np.arange(Triplet_TDM.shape[0])
     Triplet_TDM_sym = Triplet_TDM + Triplet_TDM.transpose(1,0,2)
