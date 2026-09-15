@@ -8,7 +8,7 @@ import sys
 from ExROPPP_settings_opt import *
 from SCF import *
 from DipBuilder import *
-from CIBuilder import *
+from CIBuilderNew import *
 import os
 
 
@@ -200,7 +200,7 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
 
 
 
-def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file, ci_level):
+def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_level):
     '''
     Calculates monoradical excited states in rotated (CSF) basis using the CIS or XCIS method. Used for molecules without Nitrogen or Chlorine present.
     
@@ -210,8 +210,8 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         coords (array): Array of atomic coordinates
         atoms (array): Array of atomic symbols
         energy0 (float): Ground state energy
-        repulsion (array): 2-electron repulsion integrals in AO basis
-        orb_energies (array): HF orbital energies
+        rep_tens (array): 4-index two-electron repulsion integrals in MO basis
+        fock_mat (array): Fock matrix in MO basis
         hf_orbs (array): HF molecular orbitals
         file (str): Name of file to write output to (without extension)
 
@@ -229,30 +229,9 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
         out.write("------------------------")
         out.write("Starting ExROPPP calculation for diradical in rotated basis")
         out.write("------------------------\n")
-
-        # Transform 2-el ingrls into mo basis
-        rep_tens = transform(repulsion,hf_orbs)
-        print('Coulomb Matrix in MO basis, J_ij = (ii|jj):\n', np.einsum('iijj->ij', rep_tens))
-        print('Coulomb Matrix in MO basis, K_ij = (ij|ji):\n', np.einsum('ijij->ij', rep_tens))
-        # Get exchange and Coulomb terms for SOMOs
-        '''
-        print('Two-Electron Array')
-        for p in range(norbs):
-            for q in range(norbs):
-                for r in range(norbs):
-                    for s in range(norbs):
-                        val = rep_tens[p, q, r, s]
-                        # Only print significant values to avoid clutter
-                        if abs(val) > 1e-8:
-                            print(f"({p}, {q} | {r}, {s}) {val:15.8f}")
-        '''
+        
         # Construct CIS Hamiltonian
-        if ci_level < 2:
-            ham_rot, ham_blocks = get_full_CIMatrix(ndocc, norbs, energy0, orb_energies, rep_tens, ci_level)
-        else:
-            ham_rot, ham_blocks = get_full_CIMatrix(ndocc, norbs, energy0, orb_energies, rep_tens, ci_level)
-        np.set_printoptions(precision=3, suppress=True)
-        #print('CI Hamiltonian:\n', ham_rot)
+        ham_rot, ham_blocks = get_full_CIMatrix(ndocc, norbs, energy0, fock_mat, rep_tens, ci_level)
             
         print('Dimensions of CI matrix:', ham_rot.shape)
         print("Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... ")
@@ -280,19 +259,6 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
             cutoff_energy = 100
         
         ci_energies, ci_coeffs = diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level)
-        
-        '''
-        # Diagonalize CIS Hamiltonianfor first rng excited states
-        if rng < nstates:
-            print("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
-            out.write("Diagonalizing Hamiltonian using the sparse matrix method ...\n")
-
-            ci_energies, ci_coeffs = sp.eigsh(ham_rot,k=rng,which="SA")
-        elif rng == nstates:
-            print("Diagonalizing Hamiltonian using the dense matrix method ...\n")
-            out.write("Diagonalizing Hamiltonian using the dense matrix method ...\n")
-            ci_energies, ci_coeffs = linalg.eigh(ham_rot)
-        '''
 
         # Calculate transition dipole moment matrix
         dip_array = get_full_TDM(ndocc, norbs, coords, hf_orbs, ci_level)[0]
@@ -319,18 +285,12 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,repulsion,orb_energies,hf_orbs, file
 
 
 
-def rad_calc(file,params):
+def rad_calc(file,params,rotation_matrix=None):
     filename = os.path.basename(file)
-    coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy0,one_body,two_body,orb_energy,hf_orbs,fock_mat=main_scf(file,params)
+    coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy0,rep_tens,orb_energy,hf_orbs,fock_mat = main_scf(file,params,rotation_matrix)
     com,coord = re_center(coord,atoms_array,coord_w_h)
     hf_orbs = orb_sign(hf_orbs,orb_energy,nelec,dist_array,natoms_c,alt)
-    print("\n--------------------------")
-    print("Converged ROPPP Orbitals")
-    print("--------------------------\n")
     natoms=np.shape(coord)[0]
-    for iorb in range(natoms):
-        print('orbital number', iorb + 1, 'energy', orb_energy[iorb]-orb_energy[int((nelec-1)/2)])
-        print(np.around(hf_orbs[:, iorb], decimals=2))
 
             #########################################################
              # PRINTING OF MOLECULAR ORBITALS BASED ON GAMESS OUTPUT #
@@ -453,27 +413,13 @@ def rad_calc(file,params):
         f.write("\n  ...... END OF ROHF CALCULATION ......")
     f.write("\n ")
     f.close()
-    # check that fock matrix is diagonalized
+    
     fock_mo = np.dot(hf_orbs.T,np.dot(fock_mat,hf_orbs))
-    for i in range(fock_mo.shape[0]):
-        for j in range(fock_mo.shape[0]):
-            if i!=j and fock_mo[i,j] > 1e-4:
-                print("Fock matrix not converged!")
-                print("\nFock Matrix:")
-                print(f'Large off-diagonal matrix element found at F_{i},{j}: {fock_mo[i,j]}')
-                print(fock_mo)
-                sys.exit()
-    # check the density matrix
+    
     dens_mat = density(hf_orbs, ndocc)
     dens_mo = np.dot(hf_orbs.T, np.dot(dens_mat, hf_orbs))
     print('\nOrbital occupation numbers:')
     for i in range(dens_mo.shape[0]):
         print("%d: %f"%(i+1,dens_mo[i,i]))
-        for j in range(dens_mo.shape[0]):
-            if i!=j and fock_mo[i,j] > 1e-4:
-                print("Density matrix not converged!")
-                print("\nDensity Matrix:")
-                print(dens_mo)
-                sys.exit()
-    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, two_body, orb_energy, hf_orbs, file, ci_level=3)
+    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, rep_tens, fock_mo, hf_orbs, file, ci_level=3)
     return strngs, ci_energies_array, osc_arrays, s2_array

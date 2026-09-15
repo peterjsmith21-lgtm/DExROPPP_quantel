@@ -785,7 +785,7 @@ def delocalise_somos(orbs, i, j):
 
 
 #Main HF function
-def main_scf(file, params, maxcycles=5000, d_tol=5e-15):
+def main_scf(file, params, rotation_matrix=None, maxcycles=5000, d_tol=5e-15):
     '''
     Main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
     For molecules that struggle to converge, a level shift can be applied...
@@ -809,6 +809,7 @@ def main_scf(file, params, maxcycles=5000, d_tol=5e-15):
         coord,atoms_array,coord_w_h,natoms_c,natoms_n,natoms_cl,natoms = read_geom(file)
     dist_array = distance(coord)
     n_list,atoms = ntype(coord_w_h,atoms_array,natoms_c,natoms_n)
+    natoms = np.shape(coord)[0]
     nelec = natoms + sum(n_list) + natoms_cl #each pyrolle type N contributes 1 additional e-, so does Cl
     ndocc = int((nelec-1)/2) # no. of doubly-occupied orbitals
     print("\nThere are %d heavy atoms."%natoms)
@@ -873,17 +874,15 @@ def main_scf(file, params, maxcycles=5000, d_tol=5e-15):
         energy1 = energy2
         guess_dens = dens
         guess_fock = fock_mat
-        
-        '''
-        if iter == maxcycles - 5:
-            print("\n--------------------------")
-            print("Converged ROPPP Orbitals")
-            print("--------------------------\n")
-            natoms=np.shape(coord)[0]
-            for iorb in range(natoms):
-                print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
-                print(np.around(orbs[:, iorb], decimals=2))
-        '''
+    
+    natoms=np.shape(coord)[0]
+    print("\n--------------------------")
+    print("Converged ROPPP Orbitals")
+    print("--------------------------\n")
+    for iorb in range(natoms):
+        print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
+        print(np.around(orbs[:, iorb], decimals=2))
+
     
     SOMO1 = ndocc
     SOMO2 = ndocc + 1
@@ -920,4 +919,139 @@ def main_scf(file, params, maxcycles=5000, d_tol=5e-15):
     energy2 = energy(hopping, repulsion, fock_mat, density_rot, orbs, ndocc)
     '''
     print('ENERGY0:', energy2)
-    return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,hopping,repulsion,evals,orbs,fock_mat
+    
+    rep_tens = transform(repulsion, orbs)
+    write_fcidump(file, nelec, orbs, rep_tens, hopping, repulsion, natoms, natoms_c, natoms_n, n_list)
+    
+    if rotation_matrix is not None:
+        print('########## Rotating MO coefficients ###########')
+        orbs = orbs @ rotation_matrix
+        print("\n--------------------------")
+        print("Rotated Orbitals")
+        print("--------------------------\n")
+        for iorb in range(natoms):
+            print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
+            print(np.around(orbs[:, iorb], decimals=2))
+        dens = density(orbs, ndocc)
+        fock_mat = fock(repulsion, hopping, dens, natoms_c, natoms_n, natoms, n_list)
+        
+    
+    return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,rep_tens,evals,orbs,fock_mat
+
+
+def transform(two_body, hf_orbs):
+    '''
+    Places two-body terms (V_ij) into a four-index tensor (ij|kl) and performs a four-index transformation to the molecular orbital basis.
+    
+    Args:
+        two_body: 2D array of two-body repulsion integrals in the atomic orbital basis. Usually repulsion array from v_term function. Shape (Natoms, Natoms)
+        hf_orbs: 2D array of Hartree-Fock orbital coefficients in the atomic orbital basis. Shape (Natoms, Natoms)
+    
+    Returns:
+        two_body_mo: 4D array of two-body repulsion integrals in the molecular orbital basis. Shape (Natoms, Natoms, Natoms, Natoms)
+    '''
+    Natoms = hf_orbs.shape[0]
+    two_body_4i = np.zeros((Natoms, Natoms, Natoms, Natoms))
+    ia = np.arange(Natoms)
+    two_body_4i[ia[:, None], ia[:, None], ia[None, :], ia[None, :]] = two_body
+    #four index transformation
+    two_body_mo = np.einsum("ia, jb, kc, ld, ijkl -> abcd",
+                             hf_orbs, hf_orbs, hf_orbs, hf_orbs, two_body_4i, optimize= 'optimal' )
+    return two_body_mo
+
+
+def build_h_core_AO(hopping, repulsion, natoms, natoms_c, natoms_n, n_list):
+    """
+    Reconstruct the true 1-electron core Hamiltonian in the AO basis.
+
+    hopping carries:
+      - off-diagonal: beta_μν (bonded) or 0 (ZDO)
+      - diagonal: alpha_μ site energies for N and Cl; 0 for C
+
+    Missing from hopping (hidden in the fock G matrix): 
+      the nuclear attraction on the diagonal: -sum_{nu != mu} z_nu * gamma_mu_nu
+    """
+    h_core = hopping.copy()
+
+    for i in range(natoms):
+        for j in range(natoms):
+            if i == j:
+                continue
+            # Core charge (pi electrons contributed) of atom j
+            if natoms_c <= j < natoms_c + natoms_n:
+                zj = n_list[j - natoms_c] + 1   # pyridine-N -> 1, pyrrole-N -> 2
+            elif j >= natoms_c + natoms_n:
+                zj = 2                            # Cl
+            else:
+                zj = 1                            # C
+            h_core[i, i] -= zj * repulsion[i, j]
+
+    return h_core
+
+
+def build_e_nuc(repulsion, natoms, natoms_c, natoms_n, n_list):
+    """
+    Nuclear repulsion constant in PPP theory:
+        E_nuc = 0.5 * sum_{mu,nu} z_mu * z_nu * gamma_mu_nu
+    This is the constant term in the PPP Hamiltonian (from the neutral-atom
+    decomposition H = h_core + G + E_nuc).
+    """
+    z = []
+    for i in range(natoms):
+        if natoms_c <= i < natoms_c + natoms_n:
+            z.append(n_list[i - natoms_c] + 1)
+        elif i >= natoms_c + natoms_n:
+            z.append(2)
+        else:
+            z.append(1)
+    z = np.array(z, dtype=float)
+    # Vectorised outer product
+    return 0.5 * np.einsum('i,j,ij->', z, z, repulsion)
+
+
+
+
+def write_fcidump(file, nelec, orbs, rep_tens, hopping, repulsion, norbs, natoms_c, natoms_n, n_list, thresh=1e-15):
+    '''Code to pass electron integrals into FCIDUMP format for use in Hugh's SCF code. (Adapted from quantel code).'''
+    
+    base_dir = os.path.dirname(file)
+    mol_name = os.path.splitext(os.path.basename(file))[0]
+    output_path = os.path.join(base_dir, 'FCIDUMP', f'FCIDUMP_{mol_name}')
+    
+    norbs = rep_tens.shape[0]
+    with open(output_path,'w') as out:
+        out.write("&FCI NORB=%d, NELEC=%d, MS2=0,\n" %(norbs, nelec))
+        out.write(" ORBSYM=")
+        for i in range(norbs):
+            out.write("1,")
+        out.write("\n")
+        out.write(" ISYM=1,\n")
+        out.write("&END\n")
+        
+        # Two-electron integrals (chemist's notation, 8-fold symmetry, 1-indexed)
+        # Loop over unique (pq|rs) with p>=q, r>=s, pq>=rs
+        for i in range(norbs):
+            for j in range(i+1):
+                ij = i*norbs + j
+                for k in range(norbs):
+                    for l in range(k+1):
+                        kl = k*norbs + l
+                        if ij < kl: continue
+                        val = rep_tens[i, j, k, l]
+                        if abs(val) > thresh:
+                            out.write(f"{val:23.16e} {i+1:4d} {j+1:4d} {k+1:4d} {l+1:4d}\n")
+        
+        # One-electron integrals (upper triangle, 1-indexed)
+        h_core_AO = build_h_core_AO(hopping, repulsion, norbs, natoms_c, natoms_n, n_list)
+        h_core = orbs.T @ h_core_AO @ orbs
+        for i in range(norbs):
+            for j in range(i+1):
+             val = h_core[i, j]
+             if abs(val) > thresh:
+                 out.write(f"{val:23.16e} {i+1:4d} {j+1:4d} {0:4d} {0:4d}\n")
+        
+        # Nuclear repulsion energy
+        E_nuc = build_e_nuc(repulsion, norbs, natoms_c, natoms_n, n_list)
+        out.write(f"{E_nuc:23.16e} {0:4d} {0:4d} {0:4d} {0:4d}\n")
+        
+    print(f"FCIDUMP file written to {output_path}\n")

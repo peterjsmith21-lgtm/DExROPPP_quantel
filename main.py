@@ -1,6 +1,9 @@
 import argparse
+import numpy as np
 parser = argparse.ArgumentParser()
 parser.add_argument('geometry', type = str, help = 'file containing geometry')
+parser.add_argument('--rotation_matrix', type=str, default=None,
+                    help='file containing rotation matrix (numpy .npy or text)')
 args = parser.parse_args()
 optimized_geometry = args.geometry
 
@@ -16,6 +19,11 @@ opt_params = [[-22.71707507,   1.70561621 ,  8.42083845  , 1.17315691 ,  0.     
  [-17.68133786, -24.73720244 ,  1.43363853 , 17.97984271 ,  1.11179102],
  [-10.33567426, -26.02193733 ,  1.45186057 ,  9.64299129 ,  2.25331612]]
 
+if args.rotation_matrix is not None:
+    rotation_matrix = np.load(args.rotation_matrix)
+else:
+    rotation_matrix = None
+    
 
 if __name__ == '__main__':
     from Diradical_ExROPPP import rad_calc
@@ -25,7 +33,8 @@ if __name__ == '__main__':
     start = time.perf_counter()
 
     # For doing individual ExROPPP calculations on one diradical
-    strngs,ci_energies_array, osc_arrays, s2_array  = rad_calc(file=optimized_geometry, params = opt_params)
+    strngs,ci_energies_array, osc_arrays, s2_array  = rad_calc(file=optimized_geometry, params = opt_params, 
+                                                               rotation_matrix = rotation_matrix)
     #Get spectrum plot for triplet
     filename = optimized_geometry + 'Triplet_Ref'
     gnu_Exroppp(strngs[0], filename)
