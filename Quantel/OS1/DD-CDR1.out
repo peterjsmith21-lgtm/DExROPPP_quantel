@@ -1402,5 +1402,3 @@ Fock matrix in rotated MO basis: [[-8.07345201e+00 -1.26511646e-15  1.14983155e-
   -5.06296122e-15  1.03160375e+01]]
 Dimensions of CI matrix: (28816, 28816)
 Checking that the Hamiltonian is symmetric (a value of zero means matrix is symmetric) ... 
-Frobenius norm of matrix - matrix transpose = 0.000000.
-
