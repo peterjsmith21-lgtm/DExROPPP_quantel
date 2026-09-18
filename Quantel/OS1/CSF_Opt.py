@@ -33,7 +33,7 @@ if __name__ == "__main__":
         print("************************************************")
         from quantel.opt.lbfgs import LBFGS
         wfn.get_orbital_guess(method=guess, localise=False)
-        LBFGS().run(wfn)
+        LBFGS().run(wfn, maxit=200)
         
         # Test canonicalisation 
         wfn.canonicalize()

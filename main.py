@@ -4,6 +4,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('geometry', type = str, help = 'file containing geometry')
 parser.add_argument('--rotation_matrix', type=str, default=None,
                     help='file containing rotation matrix (numpy .npy or text)')
+parser.add_argument('--converged_orbs', type=str, default=None,
+                    help='file containing converged orbitals (numpy .npy or text)')
 args = parser.parse_args()
 optimized_geometry = args.geometry
 
@@ -24,6 +26,10 @@ if args.rotation_matrix is not None:
 else:
     rotation_matrix = None
     
+if args.converged_orbs is not None:
+    converged_orbs = np.load(args.converged_orbs)
+else:
+    converged_orbs = None
 
 if __name__ == '__main__':
     from Diradical_ExROPPP import rad_calc
@@ -34,7 +40,7 @@ if __name__ == '__main__':
 
     # For doing individual ExROPPP calculations on one diradical
     strngs,ci_energies_array, osc_arrays, s2_array  = rad_calc(file=optimized_geometry, params = opt_params, 
-                                                               rotation_matrix = rotation_matrix)
+                                                               rotation_matrix = rotation_matrix, converged_orbs = converged_orbs)
     #Get spectrum plot for triplet
     filename = optimized_geometry + 'Triplet_Ref'
     gnu_Exroppp(strngs[0], filename)

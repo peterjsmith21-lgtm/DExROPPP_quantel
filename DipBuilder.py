@@ -1363,34 +1363,47 @@ def build_triplet_TDM(ndocc, norbs, dip1el, ci_level):
     
     return Triplet_TDM_sym
 
-def get_full_TDM(ndocc, norbs, coords, hf_orbs, ci_level):
+def get_full_TDM(ndocc, norbs, coords, hf_orbs, ci_level, max_bytes=2 * 1024**3):
     '''
     Function to build the TDM from a number of excitation blocks given by ci_level.
     ci_level = 0 -> Only the reference block is included
     ci_level = 1 -> The reference block and the CS/SV block
     ci_level = 2 -> The reference block, the CS/SV block, and the CV block
     ci_level = 3 -> The reference block, the CS/SV block, the CV block, and the double CS/ double SV block
+
+    max_bytes: cap on float64 storage (in bytes) before falling back to float32.
+               Default is 2 GB.
     '''
     dip1el = cartesian_operators(coords, hf_orbs)[0]
     singlet_block = build_singlet_TDM(ndocc, norbs, dip1el, ci_level)
     triplet_block = build_triplet_TDM(ndocc, norbs, dip1el, ci_level)
     singlet_dim = singlet_block.shape[0]
-    
-    if ci_level < 2: 
-        full_dim = singlet_dim + triplet_block.shape[0]
-        
-        full_TDM = np.zeros((full_dim, full_dim, 3))
-        full_TDM[:singlet_dim, :singlet_dim, :] = singlet_block
-        full_TDM[singlet_dim:, singlet_dim:, :] = triplet_block
-    
+    triplet_dim = triplet_block.shape[0]
+
+    if ci_level < 2:
+        full_dim = singlet_dim + triplet_dim
+        quintet_block = None
     else:
         quintet_block = build_quintet_block(ndocc, norbs, dip1el)
-        triplet_dim = triplet_block.shape[0]
         full_dim = singlet_dim + triplet_dim + quintet_block.shape[0]
-                
-        full_TDM = np.zeros((full_dim, full_dim, 3))
-        full_TDM[:singlet_dim, :singlet_dim, :] = singlet_block
-        full_TDM[singlet_dim:singlet_dim + triplet_dim, singlet_dim:singlet_dim + triplet_dim, :] = triplet_block
+
+    # Decide dtype based on what float64 storage would require
+    n_elements = full_dim * full_dim * 3
+    float64_bytes = n_elements * 8  # 8 bytes per float64
+
+    dtype = np.float32 if float64_bytes > max_bytes else np.float64
+
+    # Cast blocks to chosen dtype
+    singlet_block = singlet_block.astype(dtype)
+    triplet_block = triplet_block.astype(dtype)
+    if quintet_block is not None:
+        quintet_block = quintet_block.astype(dtype)
+
+    full_TDM = np.zeros((full_dim, full_dim, 3), dtype=dtype)
+    full_TDM[:singlet_dim, :singlet_dim, :] = singlet_block
+    full_TDM[singlet_dim:singlet_dim + triplet_dim, singlet_dim:singlet_dim + triplet_dim, :] = triplet_block
+
+    if quintet_block is not None:
         full_TDM[singlet_dim + triplet_dim:, singlet_dim + triplet_dim:, :] = quintet_block
 
     return full_TDM, singlet_block, triplet_block

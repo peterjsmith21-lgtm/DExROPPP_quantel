@@ -1,0 +1,45 @@
+How to use the DExROPPP code
+
+0) Make sure you are using MACE environment to run python code 
+***
+(conda activate mace)
+***
+
+1) To execute the DExROPPP code use (in the directory Diradical-EXROPPP/Delocal_Tests): 
+    
+    python ../main.py [name of molecule].xyz > [name].out (change output file as appropriate).
+    
+    e.g., python ../main.py M-CDR_test.xyz > M-CDR_test.out 
+    (this took 30mins to run)
+
+2) This will create an output file with orbitals and multiplicities calculated.
+    As well as two files for plotting: gnuplot_script_[molecule].xyzSinglet_Ref and .xyzTriplet_Ref
+    (in \Diradical-EXROPPP\Delocal_Tests\Gnuplots directory).
+    But note that they will contain the name of the molecule not the name of the .out file.
+
+3) From these two files you can create the UV spectra for either the singlet or triplet states using the following command in the terminal (ensure you are in \Diradical-EXROPPP\Delocal_Tests\Gnuplots directory):
+    python spectra_plotter_matplotlib.py gnuplot_script_[molecule].xyzSinglet_Ref M-CDR_test 
+    (and similar for the Triplet).
+
+4) Altrenatively if you want a plot with the weighted combination of singlet and triplet.
+    Copy both the singlet and triplet "gnuplot_script_" files into \Diradical-EXROPPP\Emissive_Molecules\Gnuplots and change to that directory.
+    Then run the following line in the terminal:
+    python hybrid_spectra_plotter_new.py gnuplot_script_[?].xyzSinglet_Ref gnuplot_script_[?].xyzTriplet_Ref [Name output] 0.01
+    The final value is <delta E> = E_singlet - E_triplet. I have it set to 0.01 but this may be very wrong.
+
+    e.g., python hybrid_spectra_plotter_new.py gnuplot_script_M-CDR.xyzSinglet_Ref gnuplot_script_M-CDR.xyzTriplet_Ref M-CDR_test 0.01
+
+5) Saved to https://github.com/peterjsmith21-lgtm/Diradical-EXROPPP
+
+#####################################################################################################
+New changes
+
+i) Run standard DExROPPP code from Quantel/OS1 or Quantel/HS3 (use: python ../../main.py [molecule].xyz > [molecule].out)
+ii) Creates FCIDUMP_[molecule] file (this can be copied into the other directory (HS3 or OS1) to save time).
+iii) change to WSL and conda activate quantel
+iv) python CSF_Opt.py ./FCIDUMP/FCIDUMP_AO_[Molecule] > [Molecule].out 
+    (check all eigenvalues are positive so that we are not at a saddlepoint)
+    (check the energies of both gwh and core to find out which one you use).
+v) python ../../main.py M-CDR_prune.xyz --converged_orbs FCIDUMP/FCIDUMP_AO_M-CDR_prune_core_mo_coeff.npy > M-CDR.out
+    **may need to change core to gwh**
+vi) plot using: python plotter_with_experimental.py gnuplot_script_M-CDR_prune.xyzSinglet_Ref gnuplot_script_M-CDR_prune.xyzTriplet_Ref M-CDR 0.015

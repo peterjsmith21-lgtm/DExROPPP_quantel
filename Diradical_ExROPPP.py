@@ -285,135 +285,13 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_
 
 
 
-def rad_calc(file,params,rotation_matrix=None):
+def rad_calc(file,params,rotation_matrix=None,converged_orbs=None):
     filename = os.path.basename(file)
-    coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy0,rep_tens,orb_energy,hf_orbs,fock_mat = main_scf(file,params,rotation_matrix)
+    coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy0,rep_tens,hf_orbs,fock_mat = main_scf(file,params,rotation_matrix,converged_orbs)
     com,coord = re_center(coord,atoms_array,coord_w_h)
-    hf_orbs = orb_sign(hf_orbs,orb_energy,nelec,dist_array,natoms_c,alt)
     natoms=np.shape(coord)[0]
 
-            #########################################################
-             # PRINTING OF MOLECULAR ORBITALS BASED ON GAMESS OUTPUT #
-             #########################################################
-    atomic_numbers=[]
-    for atom in atoms_array:
-        number={"C":6.0,"c":6.0,"H":1.0,"h":1.0,"N":7.0,"n":7.0,"N1":7.0,"n1":7.0,"N2":7.0,"n2":7.0,"Cl":17.0,"cl":17.0,"CL":17.0}[atom[0]]
-        atomic_numbers.append([atom[0],number])
-    f=open('Converged_orbitals/%s.out'%filename,'w')
-    f.write("\n")
-    f.write("\nGAMESS COORDINATES FORMAT")
-    f.write("\n")
-    f.write("\n ATOM      ATOMIC                      COORDINATES (BOHR)")
-    f.write("\n           CHARGE         X                   Y                   Z")
-    #for i,atom in enumerate(atoms_array):
-    for i in range(natoms_c+natoms_n+natoms_cl):
-        f.write("\n %s           %d     %f            %f            %f"%(atoms_array[i][0],atomic_numbers[i][1],coord[i,0]*tobohr,coord[i,1]*tobohr,coord[i,2]*tobohr))
-    f.write("\n                      ")
-    f.write("\n     ATOMIC BASIS SET")
-    f.write("\n     ----------------")
-    f.write("\n ")
-    f.write("\n ")
-    f.write("\n ")
-    f.write("\n  SHELL TYPE  PRIMITIVE        EXPONENT          CONTRACTION COEFFICIENT(S)")
-    f.write("\n ")
-    n1=1
-    n2=1
-    for i,atom in enumerate(atoms_array):
-        if atom[0] == 'C':
-            f.write("\n C         ")
-            f.write("\n ")
-            f.write("\n     %2s   S     %3s            27.3850330    0.430128498301"%(str(n1+i),str(n2+i)))
-            f.write("\n     %2s   S     %3s             4.8745221    0.678913530502"%(str(n1+i),str(n2+i+1)))
-            f.write("\n ")
-            f.write("\n     %2s   L     %3s             1.1367482    0.049471769201    0.511540707616"%(str(n1+i+1),str(n2+i+2)))
-            f.write("\n     %2s   L     %3s             0.2883094    0.963782408119    0.612819896119"%(str(n1+i+1),str(n2+i+3)))
-            f.write("\n ")
-            n1+=1
-            n2+=3
-        if atom[0] in ['N','N1','N2']:
-            f.write("\n N         ")
-            f.write("\n ")
-            f.write("\n     %2s   S     %3s            27.3850330    0.430128498301"%(str(n1+i),str(n2+i)))
-            f.write("\n     %2s   S     %3s             4.8745221    0.678913530502"%(str(n1+i),str(n2+i+1)))
-            f.write("\n ")
-            f.write("\n     %2s   L     %3s             1.1367482    0.049471769201    0.511540707616"%(str(n1+i+1),str(n2+i+2)))
-            f.write("\n     %2s   L     %3s             0.2883094    0.963782408119    0.612819896119"%(str(n1+i+1),str(n2+i+3)))
-            f.write("\n ")
-            n1+=1
-            n2+=3
-        if atom[0] == 'Cl':
-            f.write("\n Cl         ")
-            f.write("\n ")
-            f.write("\n     %2s   S     %3s           229.9441039    0.430128498301"%(n1+i,n2+i))
-            f.write("\n     %2s   S     %3s            40.9299346    0.678913530502"%(n1+i,n2+i+1))
-            f.write("\n ")
-            f.write("\n     %2s   L     %3s            15.0576101    0.049471769201    0.511540707616"%(str(n1+i+1),str(n2+i+2)))
-            f.write("\n     %2s   L     %3s             3.8190075    0.963782408119    0.612819896119"%(str(n1+i+1),str(n2+i+3)))
-            f.write("\n ")
-            f.write("\n     %2s   L     %3s             0.8883464   -0.298398604487    0.348047191182"%(str(n1+i+2),str(n2+i+4)))
-            f.write("\n     %2s   L     %3s             0.3047828    1.227982887359    0.722252322062"%(str(n1+i+2),str(n2+i+5)))
-            n1+=2
-            n2+=5
-        f.write("\n ")  
-    for imo in range(hf_orbs.shape[0]):
-        f.write("\n ")
-        f.write("\n          ------------")
-        f.write("\n          EIGENVECTORS")
-        f.write("\n          ------------")
-        f.write("\n ")
-        f.write("\n                      %s    "%str(imo+1))
-        f.write("\n                   %4f "%(orb_energy[imo]-orb_energy[int((nelec-1)/2)]))
-        f.write("\n                     A     ")# symmetry (A is default for c1)
-        kao=1
-        for jatom, atom in enumerate(atoms_array):
-            if atom[0]=='C':
-                if file=='allyl' or file=='benzyl':
-                    f.write("\n  %3s  C %2s  S    0.000000  "%(str(kao),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
-                    #f.write("\n  %3s  C %2s  X    %6f"%(str(kao+2),str(jatom+1),hf_orbs[jatom,imo]))
-                    #f.write("\n  %3s  C %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
-                    #f.write("\n  %3s  C %2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  Y    %6f"%(str(kao+3),str(jatom+1),hf_orbs[jatom,imo]))
-                    #f.write("\n  %3s  C %2s  Z    %6f"%(str(kao+4),str(jatom+1),hf_orbs[jatom,imo]))
-                    f.write("\n  %3s  C %2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
-                    kao+=5
-                elif file=='dpm' or file=='dpxm' or file=='pdxm':
-                    f.write("\n  %3s  C %2s  S    0.000000  "%(str(kao),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  X    %6f"%(str(kao+2),str(jatom+1),hf_orbs[jatom,imo]))
-                    f.write("\n  %3s  C %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
-                    kao+=5
-                else:
-                    f.write("\n  %3s  C %2s  S    0.000000  "%(str(kao),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
-                    f.write("\n  %3s  C %2s  Z    %6f"%(str(kao+4),str(jatom+1),hf_orbs[jatom,imo]))
-                    kao+=5
-            if atom[0] in ['N','N1','N2']:
-                f.write("\n  %3s  N %2s  S    0.000000  "%(str(kao),str(jatom+1)))
-                f.write("\n  %3s  N %2s  S    0.000000"  %(str(kao+1),str(jatom+1)))
-                f.write("\n  %3s  N %2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
-                f.write("\n  %3s  N %2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
-                f.write("\n  %3s  N %2s  Z    %6f"%(str(kao+4),str(jatom+1),hf_orbs[jatom,imo]))
-                kao+=5
-            if atom[0]=='Cl':
-                f.write("\n  %3s  Cl%2s  S    0.000000  "%(str(kao),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  S    0.000000  "%(str(kao+1),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  X    0.000000  "%(str(kao+2),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  Y    0.000000  "%(str(kao+3),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  Z    0.000000  "%(str(kao+4),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  S    0.000000  "%(str(kao+5),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  X    0.000000  "%(str(kao+6),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  Y    0.000000  "%(str(kao+7),str(jatom+1)))
-                f.write("\n  %3s  Cl%2s  Z    %6f"%(str(kao+8),str(jatom+1),hf_orbs[jatom,imo]))
-                kao+=9
-        f.write("\n  ...... END OF ROHF CALCULATION ......")
-    f.write("\n ")
-    f.close()
-    
+
     fock_mo = np.dot(hf_orbs.T,np.dot(fock_mat,hf_orbs))
     
     dens_mat = density(hf_orbs, ndocc)

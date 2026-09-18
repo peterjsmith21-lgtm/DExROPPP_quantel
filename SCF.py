@@ -5,6 +5,7 @@ import scipy.linalg as linalg
 from subprocess import getoutput
 import sys
 from collections import deque
+from ExROPPP import transform
 from ExROPPP_settings_opt import *
 import os
 
@@ -388,47 +389,7 @@ def order_orbs(ncarb, orbs, orb_energies, alt):
                     alt=False
                     return pairs_list, alt
     return pairs_list, alt                   
-  
 
-
-def orb_sign(orbs,orb_energies,nelec,dist_array,natoms_c,alt):
-    '''
-    Adjusts orbital phases to satisfy alternant hydrocarbon symmetry.Ensures that starred atoms retain their sign 
-    across a pair, while unstarred atoms undergo a phase inversion in the antibonding orbital.
-
-    Args:
-        orbs (ndarray): Matrix of orbital coefficients (rows=atoms, cols=orbitals).
-        orb_energies (ndarray): Array of orbital energies.
-        nelec (int): Total number of electrons in the system.
-        dist_array (ndarray): Matrix of inter-atomic distances.
-        natoms_c (int): Number of carbon atoms in the molecule.
-        alt (bool): Alternacy status flag.
-
-    Returns:
-        orbs (ndarray): The orbital coefficient matrix with standardized phases.
-    '''
-    if alt==True:
-        print('\nGrouping orbitals according to alternacy symmetry...')
-        ncarb = orbs.shape[0]
-        average_somo_energy = (np.abs(orb_energies[int((nelec-1)/2)] - orb_energies[int((nelec+1)/2)])/2) / 2
-        for i in range(orb_energies.shape[0]):
-            orb_energies[i] = orb_energies[i] - average_somo_energy
-        orb_list,alt = order_orbs(ncarb,orbs,orb_energies,alt)
-    if alt==True:
-        star,unst = conec(ncarb,dist_array,natoms_c)
-        print('\nInverting orbital phases according to alternacy symmetry...\n')
-        for i,ip in orb_list:
-            for satom in star:
-                if np.sign(orbs[satom,i]) != np.sign(orbs[satom,ip]):
-                    orbs[satom,ip] = -1*orbs[satom,ip]
-                    print('flipping sign orb '+str(ip)+' starred atom '+str(satom))
-            for uatom in unst:
-                if np.sign(orbs[uatom,i]) == np.sign(orbs[uatom,ip]):
-                    print('flipping sign orb '+str(ip)+' unstarred atom '+str(uatom))
-                    orbs[uatom,ip] = -1*orbs[uatom,ip]
-    if np.sign(orbs[0,0]) == -1: # if orbital 0 has all -ve coeffs, make all +ve and invert all coeffs on all other orbitals
-        orbs = np.multiply(orbs,-1) # as per Tim's alteration
-    return orbs
 
 
 def t_term(dist_array,natoms_c,natoms_n,natoms,n_list,theta,params):
@@ -785,7 +746,7 @@ def delocalise_somos(orbs, i, j):
 
 
 #Main HF function
-def main_scf(file, params, rotation_matrix=None, maxcycles=5000, d_tol=5e-15):
+def main_scf(file, params, rotation_matrix=None, converged_orbs=None, maxcycles=5000, d_tol=5e-15):
     '''
     Main Hartree-Fock function to perform SCF calculation for a radical molecule using the ExROPPP method.
     For molecules that struggle to converge, a level shift can be applied...
@@ -819,6 +780,7 @@ def main_scf(file, params, rotation_matrix=None, maxcycles=5000, d_tol=5e-15):
     #call functions to get 1/2-body "integrals"
     hopping = t_term(dist_array,natoms_c,natoms_n,natoms,n_list,angles,params)
     repulsion = v_term(dist_array,natoms_c,natoms_n,natoms,n_list,params)
+    write_fcidump_ao(file, nelec, hopping, repulsion, natoms_c, natoms_n, n_list)
     #Diagonalize Huckel Hamiltonian to form initial density guess
     guess_evals, guess_orbs = np.linalg.eigh(hopping)
     guess_dens = density(guess_orbs,ndocc)
@@ -830,64 +792,76 @@ def main_scf(file, params, rotation_matrix=None, maxcycles=5000, d_tol=5e-15):
     shift_somo = 0
     use_diis = False
     damping = False
-    print("\n-------------------------------------")
-    print("Restricted Open-shell PPP Calculation")
-    print("-------------------------------------\n")
-    print("Starting SCF cycle...\n")
-    print("Iter   Energy        Dens Change      Energy Change")
-    print("-----------------------------------------------------")
-    for iter in range (maxcycles):
-        if iter == maxcycles-1:
-            print(f"\nEnergy not converged after {maxcycles} cycles")
-            break
-        fock_mat = fock(repulsion, hopping, guess_dens, natoms_c, natoms_n, natoms, n_list)
-        if iter > 50 and not damping and conv_crit > 0.01:
-            damping = True
-            alpha = 0.1
-            print(f'\n---Applying damping with alpha={alpha} to aid convergence---\n')
-        if damping:
-            if conv_crit < 1e-5:
-                alpha = 0.2
-            elif conv_crit < 1e-10:
-                alpha = 0.5
-        
-        if iter > 500 and conv_crit > 0.001:
-            use_diis = True
-        if iter > 1000 and conv_crit > 1e-4:
-            use_diis = True
-        if iter > 2000 and conv_crit > 1e-5:
-            use_diis = True
-        
-        if damping:
-            fock_mat = alpha * fock_mat + (1 - alpha) * guess_fock
-        if level_shift:
-            fock_mat = get_level_shifted_fock(fock_mat, orbs, ndocc, shift_virt = shift_virt, shift_somo = shift_somo)
-        if use_diis:
-            fock_mat = diis.get_extrapolated_fock(fock_mat, guess_dens)
-        evals, orbs = np.linalg.eigh(fock_mat)
-        dens = density(orbs,ndocc)
-        energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
-        conv_crit = np.absolute(guess_dens-dens).max()
-        print(iter, energy2, conv_crit, energy2 - energy1)
-        if conv_crit < d_tol:
-            break
-        energy1 = energy2
-        guess_dens = dens
-        guess_fock = fock_mat
     
-    natoms=np.shape(coord)[0]
-    print("\n--------------------------")
-    print("Converged ROPPP Orbitals")
-    print("--------------------------\n")
-    for iorb in range(natoms):
-        print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
-        print(np.around(orbs[:, iorb], decimals=2))
+    if converged_orbs is not None:
+        print("\n-------------------------------------")
+        print("Using converged orbitals from CSF-ROHF calculation")
+        print("-------------------------------------\n")
+        orbs = converged_orbs
+        for iorb in range(natoms):
+            print('orbital number', iorb + 1)
+            print(np.around(orbs[:, iorb], decimals=2))
+        dens = density(orbs, ndocc)
+        fock_mat = fock(repulsion, hopping, dens, natoms_c, natoms_n, natoms, n_list)
+        energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
+    
+    else:
+        print("\n-------------------------------------")
+        print("Restricted Open-shell PPP Calculation")
+        print("-------------------------------------\n")
+        print("Starting SCF cycle...\n")
+        print("Iter   Energy        Dens Change      Energy Change")
+        print("-----------------------------------------------------")
+        for iter in range (maxcycles):
+            if iter == maxcycles-1:
+                print(f"\nEnergy not converged after {maxcycles} cycles")
+                break
+            fock_mat = fock(repulsion, hopping, guess_dens, natoms_c, natoms_n, natoms, n_list)
+            if iter > 50 and not damping and conv_crit > 0.01:
+                damping = True
+                alpha = 0.1
+                print(f'\n---Applying damping with alpha={alpha} to aid convergence---\n')
+            if damping:
+                if conv_crit < 1e-5:
+                    alpha = 0.2
+                elif conv_crit < 1e-10:
+                    alpha = 0.5
+            
+            if iter > 500 and conv_crit > 0.001:
+                use_diis = True
+            if iter > 1000 and conv_crit > 1e-4:
+                use_diis = True
+            if iter > 2000 and conv_crit > 1e-5:
+                use_diis = True
+            
+            if damping:
+                fock_mat = alpha * fock_mat + (1 - alpha) * guess_fock
+            if level_shift:
+                fock_mat = get_level_shifted_fock(fock_mat, orbs, ndocc, shift_virt = shift_virt, shift_somo = shift_somo)
+            if use_diis:
+                fock_mat = diis.get_extrapolated_fock(fock_mat, guess_dens)
+            evals, orbs = np.linalg.eigh(fock_mat)
+            dens = density(orbs,ndocc)
+            energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
+            conv_crit = np.absolute(guess_dens-dens).max()
+            print(iter, energy2, conv_crit, energy2 - energy1)
+            if conv_crit < d_tol:
+                break
+            energy1 = energy2
+            guess_dens = dens
+            guess_fock = fock_mat
+        
+        natoms=np.shape(coord)[0]
+        print("\n--------------------------")
+        print("Converged ROPPP Orbitals")
+        print("--------------------------\n")
+        for iorb in range(natoms):
+            print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
+            print(np.around(orbs[:, iorb], decimals=2))
 
     
     SOMO1 = ndocc
     SOMO2 = ndocc + 1
-    
-    #assert abs(evals[SOMO1] - evals[SOMO2]) < 1e-12, "SOMOs are not degenerate!"
     
     '''
     print('\nEnforcing Spatial Symmetry in x for denerate SOMOs\n')
@@ -918,25 +892,27 @@ def main_scf(file, params, rotation_matrix=None, maxcycles=5000, d_tol=5e-15):
     fock_mat = fock(repulsion, hopping, density_rot, natoms_c, natoms_n, natoms, n_list)
     energy2 = energy(hopping, repulsion, fock_mat, density_rot, orbs, ndocc)
     '''
-    print('ENERGY0:', energy2)
-    
-    rep_tens = transform(repulsion, orbs)
-    write_fcidump(file, nelec, orbs, rep_tens, hopping, repulsion, natoms, natoms_c, natoms_n, n_list)
+    #write_fcidump_mo(file, nelec, orbs, rep_tens, hopping, repulsion, natoms, natoms_c, natoms_n, n_list)
     
     if rotation_matrix is not None:
+        if converged_orbs is not None:
+            raise ValueError("Cannot apply rotation matrix to converged orbitals. Please provide unconverged orbitals.")
         print('########## Rotating MO coefficients ###########')
         orbs = orbs @ rotation_matrix
         print("\n--------------------------")
         print("Rotated Orbitals")
         print("--------------------------\n")
         for iorb in range(natoms):
-            print('orbital number', iorb + 1, 'energy', evals[iorb]-evals[int((nelec-1)/2)])
+            print('orbital number', iorb + 1)
             print(np.around(orbs[:, iorb], decimals=2))
         dens = density(orbs, ndocc)
         fock_mat = fock(repulsion, hopping, dens, natoms_c, natoms_n, natoms, n_list)
-        
+        energy2 = energy(hopping, repulsion, fock_mat, dens, orbs, ndocc)
     
-    return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,rep_tens,evals,orbs,fock_mat
+    print('ENERGY0:', energy2)    
+    rep_tens = transform(repulsion, orbs)
+    
+    return coord,atoms_array,coord_w_h,dist_array,nelec,ndocc,n_list,natoms_c,natoms_n,natoms_cl,energy2,rep_tens,orbs,fock_mat
 
 
 def transform(two_body, hf_orbs):
@@ -1011,8 +987,9 @@ def build_e_nuc(repulsion, natoms, natoms_c, natoms_n, n_list):
 
 
 
-def write_fcidump(file, nelec, orbs, rep_tens, hopping, repulsion, norbs, natoms_c, natoms_n, n_list, thresh=1e-15):
-    '''Code to pass electron integrals into FCIDUMP format for use in Hugh's SCF code. (Adapted from quantel code).'''
+def write_fcidump_mo(file, nelec, orbs, rep_tens, hopping, repulsion, norbs, natoms_c, natoms_n, n_list, thresh=1e-15):
+    '''Code to pass electron integrals in F_eff MO basis into FCIDUMP format for use in Hugh's CSF-ROHF code. 
+    (Adapted from quantel code).'''
     
     base_dir = os.path.dirname(file)
     mol_name = os.path.splitext(os.path.basename(file))[0]
@@ -1055,3 +1032,114 @@ def write_fcidump(file, nelec, orbs, rep_tens, hopping, repulsion, norbs, natoms
         out.write(f"{E_nuc:23.16e} {0:4d} {0:4d} {0:4d} {0:4d}\n")
         
     print(f"FCIDUMP file written to {output_path}\n")
+    
+    
+def write_fcidump_mo(file, nelec, orbs, rep_tens, hopping, repulsion, norbs, natoms_c, natoms_n, n_list, thresh=1e-15):
+    '''Code to pass electron integrals in F_eff MO basis into FCIDUMP format for use in Hugh's CSF-ROHF code. 
+    (Adapted from quantel code).'''
+    
+    base_dir = os.path.dirname(file)
+    mol_name = os.path.splitext(os.path.basename(file))[0]
+    output_path = os.path.join(base_dir, 'FCIDUMP', f'FCIDUMP_{mol_name}')
+    
+    norbs = rep_tens.shape[0]
+    with open(output_path,'w') as out:
+        out.write("&FCI NORB=%d, NELEC=%d, MS2=0,\n" %(norbs, nelec))
+        out.write(" ORBSYM=")
+        for i in range(norbs):
+            out.write("1,")
+        out.write("\n")
+        out.write(" ISYM=1,\n")
+        out.write("&END\n")
+        
+        # Two-electron integrals (chemist's notation, 8-fold symmetry, 1-indexed)
+        # Loop over unique (pq|rs) with p>=q, r>=s, pq>=rs
+        for i in range(norbs):
+            for j in range(i+1):
+                ij = i*norbs + j
+                for k in range(norbs):
+                    for l in range(k+1):
+                        kl = k*norbs + l
+                        if ij < kl: continue
+                        val = rep_tens[i, j, k, l]
+                        if abs(val) > thresh:
+                            out.write(f"{val:23.16e} {i+1:4d} {j+1:4d} {k+1:4d} {l+1:4d}\n")
+        
+        # One-electron integrals (upper triangle, 1-indexed)
+        h_core_AO = build_h_core_AO(hopping, repulsion, norbs, natoms_c, natoms_n, n_list)
+        h_core = orbs.T @ h_core_AO @ orbs
+        for i in range(norbs):
+            for j in range(i+1):
+             val = h_core[i, j]
+             if abs(val) > thresh:
+                 out.write(f"{val:23.16e} {i+1:4d} {j+1:4d} {0:4d} {0:4d}\n")
+        
+        # Nuclear repulsion energy
+        E_nuc = build_e_nuc(repulsion, norbs, natoms_c, natoms_n, n_list)
+        out.write(f"{E_nuc:23.16e} {0:4d} {0:4d} {0:4d} {0:4d}\n")
+        
+    print(f"FCIDUMP file in MO basis written to {output_path}\n")
+    
+    
+def write_fcidump_ao(file, nelec, hopping, repulsion, natoms_c, natoms_n, n_list, thresh=1e-15):
+    '''
+    Write 1e and 2e integrals directly in the PPP AO basis to FCIDUMP format.
+
+    In PPP/ZDO the AO basis is orthonormal (S = I), so no overlap matrix is
+    needed and an AO-basis FCIDUMP is a valid input to any standard FCI solver.
+
+    The 2e integrals are maximally sparse in the AO basis due to ZDO:
+        (μν|λσ) = δ_μν δ_λσ γ_μλ
+    Only (μμ|λλ) = repulsion[μ,λ] are non-zero, reducing the four-index loop
+    to two indices.
+
+    Args:
+        - file (str): Input geometry filename (used to derive output path).
+        - nelec (int): Total number of electrons.
+        - hopping (ndarray): Hopping matrix in AO basis (norbs x norbs).
+        - repulsion (ndarray): Repulsion matrix γ_μν in AO basis (norbs x norbs).
+        - natoms_c (int): Number of carbon atoms.
+        - natoms_n (int): Number of nitrogen atoms.
+        - n_list (list): Nitrogen coordination indices (nbonds - 2).
+        - thresh (float): Threshold below which integrals are not written.
+    '''
+    base_dir = os.path.dirname(file)
+    mol_name = os.path.splitext(os.path.basename(file))[0]
+    fcidump_dir = os.path.join(base_dir, 'FCIDUMP')
+    os.makedirs(fcidump_dir, exist_ok=True)
+    output_path = os.path.join(fcidump_dir, f'FCIDUMP_AO_{mol_name}')
+
+    norbs = repulsion.shape[0]
+
+    with open(output_path, 'w') as out:
+        out.write("&FCI NORB=%d, NELEC=%d, MS2=0,\n" % (norbs, nelec))
+        out.write(" ORBSYM=")
+        for i in range(norbs):
+            out.write("1,")
+        out.write("\n")
+        out.write(" ISYM=1,\n")
+        out.write("&END\n")
+
+        # Two-electron integrals in AO basis.
+        # ZDO: (μν|λσ) = δ_μν δ_λσ γ_μλ, so only (μμ|λλ) are non-zero.
+        # Unique elements satisfy μ >= λ, which is equivalent to ij >= kl when
+        # p=q=μ and r=s=λ (compound index i*(norbs+1) >= k*(norbs+1) iff i >= k).
+        for i in range(norbs):
+            for k in range(i + 1):
+                val = repulsion[i, k]
+                if abs(val) > thresh:
+                    out.write(f"{val:23.16e} {i+1:4d} {i+1:4d} {k+1:4d} {k+1:4d}\n")
+
+        # One-electron integrals in AO basis (lower triangle, no MO transform).
+        h_core_AO = build_h_core_AO(hopping, repulsion, norbs, natoms_c, natoms_n, n_list)
+        for i in range(norbs):
+            for j in range(i + 1):
+                val = h_core_AO[i, j]
+                if abs(val) > thresh:
+                    out.write(f"{val:23.16e} {i+1:4d} {j+1:4d} {0:4d} {0:4d}\n")
+
+        # Nuclear repulsion constant.
+        E_nuc = build_e_nuc(repulsion, norbs, natoms_c, natoms_n, n_list)
+        out.write(f"{E_nuc:23.16e} {0:4d} {0:4d} {0:4d} {0:4d}\n")
+
+    print(f"FCIDUMP file in AO basis written to {output_path}\n")
