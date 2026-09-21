@@ -80,13 +80,12 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
     ascending energy.
 
     Args:
-        ham_rot  : (nstates, nstates) ndarray — full XCIS Hamiltonian
-        ndocc    : int — number of doubly-occupied orbitals
-        nvirt    : int — number of virtual orbitals
-        rng      : int — number of lowest states requested (sparse path if rng < nstates)
-        nstates  : int — total number of states
-        out      : file handle for log output
-        ci_type  : str — type of CI calculation ('XCIS' or 'XCISD')
+        ham_blocks : list of 2D arrays — diagonal blocks of the CI Hamiltonian
+                     [singlet, triplet] or [singlet, triplet, quintet] (ci_level > 1)
+        rng        : int — number of lowest states requested (sparse path if rng < nstates)
+        nstates    : int — total number of states
+        out        : file handle for log output
+        ci_level   : int — level of CI calculation (quintet block only used if ci_level > 1)
 
     Returns:
         ci_energies : (nstates,) or (rng,) ndarray — eigenvalues sorted low→high
@@ -94,7 +93,7 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
                       each column is a CI state in the full CSF basis
     """
 
-    # Slice the three diagonal blocks
+    # Slice the diagonal blocks
     H_s = ham_blocks[0]
     H_t = ham_blocks[1]
     n_singlet = H_s.shape[0]
@@ -113,11 +112,15 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
         # At minimum request 1 from each block, at most the full block size.
         k_s = max(1, min(n_singlet - 1, int(np.ceil(rng * n_singlet / nstates)) + 10))
         k_t = max(1, min(n_triplet - 1, int(np.ceil(rng * n_triplet / nstates)) + 10))
-        k_q = max(1, min(n_quintet - 1, int(np.ceil(rng * n_quintet / nstates)) + 10))
+        if ci_level > 1:
+            k_q = max(1, min(n_quintet - 1, int(np.ceil(rng * n_quintet / nstates)) + 10))
+            block_msg = f"{k_s} singlets, {k_t} triplets, {k_q} quintets "
+        else:
+            block_msg = f"{k_s} singlets, {k_t} triplets "
 
         msg = (
             f"Using sparse solver (eigsh) — requesting "
-            f"{k_s} singlets, {k_t} triplets, {k_q} quintets "
+            + block_msg +
             f"(targeting {rng} states total)\n"
         )
         print(msg)
@@ -225,10 +228,10 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_
         print("Starting ExROPPP calculation for diradical in rotated basis")
         print("------------------------\n")
 
-        out.write("")
-        out.write("------------------------")
-        out.write("Starting ExROPPP calculation for diradical in rotated basis")
+        out.write("\n")
         out.write("------------------------\n")
+        out.write("Starting ExROPPP calculation for diradical in rotated basis\n")
+        out.write("------------------------\n\n")
         
         # Construct CIS Hamiltonian
         ham_rot, ham_blocks = get_full_CIMatrix(ndocc, norbs, energy0, fock_mat, rep_tens, ci_level)
@@ -262,7 +265,6 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_
 
         # Calculate transition dipole moment matrix
         dip_array = get_full_TDM(ndocc, norbs, coords, hf_orbs, ci_level)[0]
-
         
         print("Checking that the Dipole matrix is symmetric (a value of zero means matrix is symmetric) ... ")
         print(f"Frobenius norm of matrix - matrix transpose = {linalg.norm(dip_array[:, :, 0]-dip_array[:,:,0].T):.5f} \
@@ -279,6 +281,9 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_
         # Print information about CI states
         strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_level, csf_tol=0.05)
         strngs = (strngs[0][1:], strngs[1][1:])
+
+        # Print TDM Summary (diagonal of the CI matrix gives the CSF energies)
+        print_tdm_info(ndocc, norbs, dip_array, ci_level, np.diag(ham_rot))
     return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
 
 
@@ -301,3 +306,397 @@ def rad_calc(file,params,rotation_matrix=None,converged_orbs=None):
         print("%d: %f"%(i+1,dens_mo[i,i]))
     strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, rep_tens, fock_mo, hf_orbs, file, ci_level=3)
     return strngs, ci_energies_array, osc_arrays, s2_array
+
+
+
+
+def print_tdm_line(label, vec):
+    '''Print one CSF label followed by the x, y, z components of its transition dipole moment.'''
+    print("%s %10.5f %10.5f %10.5f" % (label, vec[0], vec[1], vec[2]))
+
+
+
+def print_tdm_info(ndocc, norbs, tdms, ci_level, csf_energies=None):
+    '''
+    Prints the transition dipole moments (x, y, z) between the lowest 'reference' CSFs
+    (OS1, ZW-, ZW+, OS3) and every other CSF.
+
+    Args:
+        ndocc (int): Number of doubly occupied orbitals
+        norbs (int): Total number of orbitals
+        tdms (array): TDM array in the CSF basis. Shape (nstates, nstates, 3)
+        ci_level (int): Level of CI (0-3)
+        csf_energies (array, optional): Energies of the CSFs (e.g. diagonal of the CI Hamiltonian),
+            indexed in the same order as the CSFs. If None, no energy is printed.
+    '''
+
+    nvirt = norbs - ndocc - 2
+    npairs = ndocc * nvirt
+    ndoc1 = int((ndocc ** 2 + ndocc) / 2)
+    ndcv1 = int((nvirt ** 2 + nvirt) / 2)
+    OS1_index = 0
+    ZWm_index = 1
+    ZWp_index = 2
+    if ci_level == 0:
+        OS3_index = 0
+    elif ci_level == 1:
+        OS3_index = 2 * nvirt + 2 * ndocc + 3
+    elif ci_level == 2:
+        OS3_index = 4 * npairs + 2 * nvirt + 2 * ndocc + 3
+    else:
+        OS3_index = ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 2 * ndocc + 3
+    for i, state_label in [(OS1_index, "OS1"), (ZWm_index, "ZW_minus"), (ZWp_index,"ZW_plus"), (OS3_index, "OS3")]: # Loop over lowest 'reference' states
+        if csf_energies is not None:
+            print("\nState %s %04.3f eV " % (state_label, csf_energies[i]))
+        else:
+            print("\nState %s " % state_label)
+        print("Excitation    TDM (x, y, z)")
+        for j in range (tdms.shape[0]): # Loop over configurations in each CIS state
+            if ci_level == 0:
+                if j == 0: 
+                    label = "|1^OS>"
+                elif j == 1:
+                    label = "|ZW->"
+                elif j == 2:
+                    label = "|ZW+>"
+                elif j == 3:
+                    label = "|3^OS>"
+                print_tdm_line(label, tdms[i, j, :])
+            
+            elif ci_level == 1:
+            ### SINGLET CSFS ### 
+            # Open shell singlet ground state (|OS1>)
+                if j == 0: 
+                    label = "|1^OS>"
+                    # S^2 = 0
+            # Zwitterion - (|ZW->)    
+                elif j == 1:
+                    label = "|1^ZW->"
+                    # S^2 = 0
+            # Zwitterion 0' (|ZW+>)   
+                elif j == 2:
+                    label = "|1^ZW+>"
+                    # S^2 = 0
+            # Singlet core to SOMO 0 (|1^CS0>)
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    label = f"|1^CS({iorb}->0)>" 
+                    # S^2 = 0 
+            # Singlet core to SOMO 0' (|1^CS0'>)
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    label = f"|1^CS({iorb}->0')>" 
+                    # S^2 = 0
+            # Singlet SOMO 0 to virtual (|1^SV0>)
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    label = f"|1^SV(0->{iorb}')>"
+                    # S^2 = 0
+            # Singlet SOMO 0' to virtual (|1^SV0'>)
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    label = f"|1^SV(0'->{iorb}')>"
+                    # S^2 = 0
+                    
+            ### TRIPLET CSFs ###
+            # Triplet ground state (|OS3>)
+                elif j == (2 * nvirt + 2 * ndocc + 3): 
+                    label = "|3^OS>"
+            # Triplet core to SOMO 0 (|3^CS0>)
+                elif j > (2 * nvirt + 2 * ndocc + 3) and j <= (2 * nvirt + 3 * ndocc + 3):
+                    iorb = (2 * nvirt + 3 * ndocc + 4) - j
+                    label = f"|3^CS({iorb}->0)>" 
+            # Triplet core to SOMO 0' (|3^CS0'>)
+                elif j > (2 * nvirt + 3 * ndocc + 3) and j <= (2 * nvirt + 4 * ndocc + 3):
+                    iorb = (2 * nvirt + 4 * ndocc + 4) - j
+                    label = f"|3^CS({iorb}->0')>" 
+            # Triplet SOMO 0 to virtual (|3^SV0>)
+                elif j > (2 * nvirt + 4 * ndocc + 3) and j <= (3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (2 * nvirt + 4 * ndocc + 3)
+                    label = f"|3^SV(0->{iorb}')>"
+            # Triplet SOMO 0' to virtual (|3^SV0'>)
+                elif j > (3 * nvirt + 4 * ndocc + 3) and j <= (4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (3 * nvirt + 4 * ndocc + 3)
+                    label = f"|3^SV(0'->{iorb}')>"
+                
+                print_tdm_line(label, tdms[i, j, :])
+            
+            elif ci_level == 2:
+            ########## SINGLET CSFS ##########   
+            # Open shell singlet ground state (|OS1>)
+                if j == 0: 
+                    label = "|1^OS>"
+                    # S^2 = 0
+            # Zwitterion - (|ZW->)
+                elif j == 1:
+                    label = "|1^ZW->"
+                    # S^2 = 0
+            # Zwitterion 0' (|ZW+>)   
+                elif j == 2:
+                    label = "|1^ZW+>"
+                    # S^2 = 0
+            # Singlet core to SOMO 0 (|1^CS>)
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    label = f"|1^CS({iorb}->0)>" 
+                    # S^2 = 0 
+            # Singlet core to SOMO 0' (|1^CS>)
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    label = f"|1^CS({iorb}->0')>" 
+                    # S^2 = 0
+            # Singlet SOMO 0 to virtual (|1^SV>)
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    label = f"|1^SV(0->{iorb}')>"
+                    # S^2 = 0
+            # Singlet SOMO 0' to virtual (|1^SV>)
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    label = f"|1^SV(0'->{iorb}')>"
+                    # S^2 = 0
+            # Singlet Core to Virtual 1 (|1S^CV>)
+                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= ((npairs) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1S^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Core to Virtual 2 (|1T^CV>)
+                elif j > ((npairs) + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * (npairs) + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - ((npairs) + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - ((npairs) + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1T^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Zwitterionic Core to Virtual 0 (|1^ZCV0>)
+                elif j > (2*npairs + 2 * nvirt + 2 * ndocc + 2) and j <= (3 * npairs + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2*npairs + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2*npairs + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1^ZCV0({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Zwitterionic Core to Virtual 0' (|1^ZCV0'>)
+                elif j > (3*npairs + 2 * nvirt + 2 * ndocc + 2) and j <= (4 * npairs + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (3*npairs + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (3*npairs + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1^ZCV0'({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            ########### TRIPLET CSFs ###########
+            # Triplet ground state (|OS3>)
+                elif j == (4 * npairs + 2 * nvirt + 2 * ndocc + 3): 
+                    label = "|3^OS>"
+            # Triplet core to SOMO 0 (|3^CS>)
+                elif j > (4 * npairs + 2 * nvirt + 2 * ndocc + 3) and j <= (4 * npairs + 2 * nvirt + 3 * ndocc + 3):
+                    iorb = (4 * npairs + 2 * nvirt + 3 * ndocc + 4) - j
+                    label = f"|3^CS({iorb}->0)>"
+            # Triplet core to SOMO 0' (|3^CS>)
+                elif j > (4 * npairs + 2 * nvirt + 3 * ndocc + 3) and j <= (4 * npairs + 2 * nvirt + 4 * ndocc + 3):
+                    iorb = (4 * npairs + 2 * nvirt + 4 * ndocc + 4) - j
+                    label = f"|3^CS({iorb}->0')>"
+            # Triplet SOMO 0 to virtual (|3^SV>)
+                elif j > (4 * npairs + 2 * nvirt + 4 * ndocc + 3) and j <= (4 * npairs + 3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (4 * npairs + 2 * nvirt + 4 * ndocc + 3)
+                    label = f"|3^SV(0->{iorb}')>"
+            # Triplet SOMO 0' to virtual (|3^SV>)
+                elif j > (4 * npairs + 3 * nvirt + 4 * ndocc + 3) and j <= (4 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (4 * npairs + 3 * nvirt + 4 * ndocc + 3)
+                    label = f"|3^SV(0'->{iorb}')>"
+            # Triplet Core to Virtual 1 (|3T^CV>)
+                elif j > (4 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (5 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (4 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (4 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3T^CV({o_orb}->{v_orb}')>"
+            # Triplet Core to Virtual 2 (|3S^CV>)
+                elif j > (5 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (6 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (5 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (5 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3S^CV({o_orb}->{v_orb}')>"
+            # Triplet Core to Virtual 3 (|3X^CV>)
+                elif j > (6 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (7 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (6 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (6 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3X^CV({o_orb}->{v_orb}')>"
+            # Triplet Zwitterionic Core to Virtual 0 (|3^ZCV0>)
+                elif j > (7 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (8 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (7 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (7 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3^ZCV0({o_orb}->{v_orb}')>"
+            # Triplet Zwitterionic Core to Virtual 0' (|3^ZCV0'>)
+                elif j > (8 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (9 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    # block starts at 8*npairs (was 9*npairs, which gave the wrong occupied-orbital index)
+                    o_orb = ndocc - ((j - (8 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (8 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3^ZCV0'({o_orb}->{v_orb}')>"
+            # Quintet Core to Virtual (|5^CV>)
+                elif j > (9 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (9 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (9 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|5^CV({o_orb}->{v_orb}')>"
+                    
+                print_tdm_line(label, tdms[i, j, :])
+            
+            elif ci_level == 3:
+            ########## SINGLET CSFS ##########   
+            # Open shell singlet ground state (|OS1>)
+                if j == 0: 
+                    label = "|1^OS>"
+                    # S^2 = 0
+            # Zwitterion - (|ZW->)    
+                elif j == 1:
+                    label = "|1^ZW->"
+                    # S^2 = 0
+            # Zwitterion 0' (|ZW+>)   
+                elif j == 2:
+                    label = "|1^ZW+>"
+                    # S^2 = 0
+            # Singlet core to SOMO 0 (|1^CS>)
+                elif j > 2 and j <= ndocc + 2:
+                    iorb = ndocc + 3 - j
+                    label = f"|1^CS({iorb}->0)>" 
+                    # S^2 = 0 
+            # Singlet core to SOMO 0' (|1^CS>)
+                elif j > ndocc + 2 and j <= (2 * ndocc + 2):
+                    iorb = 2 * ndocc + 3 - j
+                    label = f"|1^CS({iorb}->0')>" 
+                    # S^2 = 0
+            # Singlet SOMO 0 to virtual (|1^SV>)
+                elif j > (2 * ndocc + 2) and j <= (nvirt + 2 * ndocc + 2):
+                    iorb = j - (2 * ndocc + 2)
+                    label = f"|1^SV(0->{iorb}')>"
+                    # S^2 = 0
+            # Singlet SOMO 0' to virtual (|1^SV>)
+                elif j > (nvirt + 2 * ndocc + 2) and j <= (2 * nvirt + 2 * ndocc + 2):
+                    iorb = j - (nvirt + 2 * ndocc + 2)
+                    label = f"|1^SV(0'->{iorb}')>"
+                    # S^2 = 0
+            # Singlet Core to Virtual 1 (|1S^CV>)
+                elif j > (2 * nvirt + 2 * ndocc + 2) and j <= (npairs + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1S^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Core to Virtual 2 (|1T^CV>)
+                elif j > (npairs + 2 * nvirt + 2 * ndocc + 2) and j <= (2 * npairs + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (npairs + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (npairs + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1T^CV({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Zwitterionic Core to Virtual 0 (|1^ZCV0>)
+                elif j > (2*npairs + 2 * nvirt + 2 * ndocc + 2) and j <= (3 * npairs + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (2*npairs + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (2*npairs + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1^ZCV0({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Zwitterionic Core to Virtual 0' (|1^ZCV0'>)
+                elif j > (3*npairs + 2 * nvirt + 2 * ndocc + 2) and j <= (4 * npairs + 2 * nvirt + 2 * ndocc + 2):
+                    o_orb = ndocc - ((j - (3*npairs + 2 * nvirt + 2 * ndocc + 3)) // nvirt)
+                    v_orb = ((j - (3*npairs + 2 * nvirt + 2 * ndocc + 3)) % nvirt) + 1
+                    label = f"|1^ZCV0'({o_orb}->{v_orb}')>" 
+                    # S^2 = 0
+            # Singlet Double Core to SOMO (|1^CSD>)
+                elif j > (4 * npairs + 2 * nvirt + 2 * ndocc + 2) and j <= (ndoc1 + 4 * npairs + 2 * nvirt + 2 * ndocc + 2):
+                    block_start = 4 * npairs + 2 * nvirt + 2 * ndocc + 3
+                    k = j - block_start
+                    o_orb1 = ndocc 
+                    o_orb2 = ndocc
+                    temp_k = k
+                    row_size = ndocc
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size -= 1
+                    o_orb2 = o_orb1 - temp_k
+                    label = f"|1^CSD_({o_orb1},{o_orb2})>"
+                    # S^2 = 0
+            # Singlet Double SOMO to Virtual (|1^SVD>)
+                elif j > (ndoc1 + 4 * npairs + 2 * nvirt + 2 * ndocc + 2) and j <= (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 2 * ndocc + 2):
+                    block_start = ndoc1 + 4 * npairs + 2 * nvirt + 2 * ndocc + 3
+                    k = j - block_start
+                    v_orb1 = 1
+                    v_orb2 = 1
+                    temp_k = k
+                    row_size = nvirt
+                    while temp_k >= row_size:
+                        temp_k -= row_size
+                        v_orb1 += 1
+                        row_size -= 1
+                    v_orb2 = v_orb1 + temp_k
+                    label = f"|1^SVD_({v_orb1}',{v_orb2}')>"
+                    # S^2 = 0
+            ########### TRIPLET CSFs ###########
+            # Triplet ground state (|OS3>)
+                elif j == (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 2 * ndocc + 3): 
+                    label = "|3^OS>"
+            # Triplet core to SOMO 0 (|3^CS>)
+                elif j > (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 2 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 3 * ndocc + 3):
+                    iorb = (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 3 * ndocc + 4) - j
+                    label = f"|3^CS({iorb}->0)>"
+            # Triplet core to SOMO 0' (|3^CS>)
+                elif j > (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 3 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 4 * ndocc + 3):
+                    iorb = (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 4 * ndocc + 4) - j
+                    label = f"|3^CS({iorb}->0')>"
+            # Triplet SOMO 0 to virtual (|3^SV>)
+                elif j > (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 4 * npairs + 3 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (ndcv1 + ndoc1 + 4 * npairs + 2 * nvirt + 4 * ndocc + 3)
+                    label = f"|3^SV(0->{iorb}')>"
+            # Triplet SOMO 0' to virtual (|3^SV>)
+                elif j > (ndcv1 + ndoc1 + 4 * npairs + 3 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 4 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    iorb = j - (ndcv1 + ndoc1 + 4 * npairs + 3 * nvirt + 4 * ndocc + 3)
+                    label = f"|3^SV(0'->{iorb}')>"
+            # Triplet Core to Virtual 1 (|3T^CV>)
+                elif j > (ndcv1 + ndoc1 + 4 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 5 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 4 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 4 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3T^CV({o_orb}->{v_orb}')>"
+            # Triplet Core to Virtual 2 (|3S^CV>)
+                elif j > (ndcv1 + ndoc1 + 5 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 6 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 5 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 5 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3S^CV({o_orb}->{v_orb}')>"
+            # Triplet Core to Virtual 3 (|3X^CV>)
+                elif j > (ndcv1 + ndoc1 + 6 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 7 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 6 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 6 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3X^CV({o_orb}->{v_orb}')>"
+            # Triplet Zwitterionic Core to Virtual 0 (|3^ZCV0>)
+                elif j > (ndcv1 + ndoc1 + 7 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 8 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 7 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 7 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3^ZCV0({o_orb}->{v_orb}')>"
+            # Triplet Zwitterionic Core to Virtual 0' (|3^ZCV0'>)
+                elif j > (ndcv1 + ndoc1 + 8 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndoc1 + 9 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    # block starts at 8*npairs (was 9*npairs, which gave the wrong occupied-orbital index)
+                    o_orb = ndocc - ((j - (ndcv1 + ndoc1 + 8 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (ndcv1 + ndoc1 + 8 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|3^ZCV0'({o_orb}->{v_orb}')>"
+            # Triplet Double Core to SOMO (|3^CSD>)
+                elif j > (ndcv1 + ndoc1 + 9 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (ndcv1 + ndocc ** 2 + 9 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    block_start = ndcv1 + ndoc1 + 9 * npairs + 4 * nvirt + 4 * ndocc + 4
+                    k = j - block_start
+                    o_orb1 = ndocc
+                    temp_k = k
+                    row_size = o_orb1 - 1
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 -= 1
+                        row_size = o_orb1 - 1
+                    o_orb2 = (o_orb1 - 1) - temp_k
+                    label = f"|3^CSD({o_orb1},{o_orb2})>"
+            # Triplet Double SOMO to Virtual (|3^SVD>)
+                elif j > (ndcv1 + ndocc ** 2 + 9 * npairs + 4 * nvirt + 4 * ndocc + 3) and j <= (nvirt ** 2 + ndocc ** 2 + 9 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    block_start = ndcv1 + ndocc ** 2 + 9 * npairs + 4 * nvirt + 4 * ndocc + 4
+                    k = j - block_start
+                    o_orb1 = 1
+                    temp_k = k
+                    row_size = nvirt - 1 
+                    while temp_k >= row_size and row_size > 0:
+                        temp_k -= row_size
+                        o_orb1 += 1
+                        row_size = nvirt - o_orb1
+                    o_orb2 = o_orb1 + 1 + temp_k
+                    label = f"|3^SVD({o_orb1},{o_orb2})>"
+            # Quintet Core to Virtual (|5^CV>)
+                elif j > (nvirt ** 2 + ndocc ** 2 + 9 * npairs + 4 * nvirt + 4 * ndocc + 3):
+                    o_orb = ndocc - ((j - (nvirt ** 2 + ndocc ** 2 + 9 * npairs + 4 * nvirt + 4 * ndocc + 4)) // nvirt)
+                    v_orb = ((j - (nvirt ** 2 + ndocc ** 2 + 9 * npairs + 4 * nvirt + 4 * ndocc + 4)) % nvirt) + 1
+                    label = f"|5^CV({o_orb}->{v_orb}')>"
+                
+                print_tdm_line(label, tdms[i, j, :])
