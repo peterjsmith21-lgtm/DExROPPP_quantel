@@ -36,7 +36,8 @@ or
 #####################################################################################################
 New changes
 
-i) Run standard DExROPPP code from Quantel/OS1 or Quantel/HS3 (use: python ../../main.py [molecule].xyz > [molecule]1.out)
+i) Run standard DExROPPP code from Quantel/OS1 or Quantel/HS3 
+    python ../../main.py [molecule].xyz > [molecule]1.out
 
 ii) Creates FCIDUMP_[molecule] file (this can be copied into the other directory (HS3 or OS1) to save time).
 
@@ -49,4 +50,5 @@ iv) python CSF_Opt.py ./FCIDUMP/FCIDUMP_AO_[Molecule] > [Molecule]2.out
 v) python ../../main.py [Molecule].xyz --converged_orbs FCIDUMP/FCIDUMP_AO_[Molecule]_core_mo_coeff.npy > [Molecule]3.out
     **may need to change core to gwh**
 
-vi) plot using: python plotter_with_experimental.py gnuplot_script_[Molecule].xyzSinglet_Ref gnuplot_script_[Molecule].xyzTriplet_Ref [Molecule] 0.015
+vi) plot using: 
+    python plotter_with_experimental.py gnuplot_script_[Molecule].xyzSinglet_Ref gnuplot_script_[Molecule].xyzTriplet_Ref [Molecule] 0.015
