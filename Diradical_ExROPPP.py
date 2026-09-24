@@ -78,20 +78,6 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
     Diagonalise the XCIS Hamiltonian by exploiting its block-diagonal structure
     (singlet / triplet / quintet blocks), then merge and sort the results by
     ascending energy.
-
-    Args:
-        ham_rot  : (nstates, nstates) ndarray — full XCIS Hamiltonian
-        ndocc    : int — number of doubly-occupied orbitals
-        nvirt    : int — number of virtual orbitals
-        rng      : int — number of lowest states requested (sparse path if rng < nstates)
-        nstates  : int — total number of states
-        out      : file handle for log output
-        ci_type  : str — type of CI calculation ('XCIS' or 'XCISD')
-
-    Returns:
-        ci_energies : (nstates,) or (rng,) ndarray — eigenvalues sorted low→high
-        ci_coeffs   : (nstates, nstates) or (nstates, rng) ndarray — eigenvectors,
-                      each column is a CI state in the full CSF basis
     """
 
     # Slice the three diagonal blocks
@@ -99,7 +85,7 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
     H_t = ham_blocks[1]
     n_singlet = H_s.shape[0]
     n_triplet = H_t.shape[0]
-    
+
     if ci_level > 1:
         H_q = ham_blocks[2]
         n_quintet = H_q.shape[0]
@@ -113,18 +99,29 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
         # At minimum request 1 from each block, at most the full block size.
         k_s = max(1, min(n_singlet - 1, int(np.ceil(rng * n_singlet / nstates)) + 10))
         k_t = max(1, min(n_triplet - 1, int(np.ceil(rng * n_triplet / nstates)) + 10))
-        k_q = max(1, min(n_quintet - 1, int(np.ceil(rng * n_quintet / nstates)) + 10))
 
-        msg = (
-            f"Using sparse solver (eigsh) — requesting "
-            f"{k_s} singlets, {k_t} triplets, {k_q} quintets "
-            f"(targeting {rng} states total)\n"
-        )
+        if ci_level > 1:
+            k_q = max(1, min(n_quintet - 1, int(np.ceil(rng * n_quintet / nstates)) + 10))
+
+        if ci_level > 1:
+            msg = (
+                f"Using sparse solver (eigsh) — requesting "
+                f"{k_s} singlets, {k_t} triplets, {k_q} quintets "
+                f"(targeting {rng} states total)\n"
+            )
+        else:
+            msg = (
+                f"Using sparse solver (eigsh) — requesting "
+                f"{k_s} singlets, {k_t} triplets "
+                f"(targeting {rng} states total)\n"
+            )
+
         print(msg)
         out.write(msg)
 
         e_s, v_s = sp.eigsh(H_s, k=k_s, which="SA")
         e_t, v_t = sp.eigsh(H_t, k=k_t, which="SA")
+
         if ci_level > 1:
             e_q, v_q = sp.eigsh(H_q, k=k_q, which="SA")
 
@@ -136,6 +133,7 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
 
         e_s, v_s = linalg.eigh(H_s)
         e_t, v_t = linalg.eigh(H_t)
+
         if ci_level > 1:
             e_q, v_q = linalg.eigh(H_q)
 
@@ -153,20 +151,21 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
 
     V_s = embed(v_s, 0, nstates)   # (nstates, k_s or n_singlet)
     V_t = embed(v_t, n_singlet, nstates)   # (nstates, k_t or n_triplet)
+
     if ci_level > 1:
         V_q = embed(v_q, n_singlet+n_triplet, nstates)   # (nstates, k_q or n_quintet)
 
     # ------------------------------------------------------------------
     # 3. Concatenate all eigenvalues/vectors and sort by energy
     # ------------------------------------------------------------------
-    
+
     if ci_level > 1:
         all_energies = np.concatenate([e_s, e_t, e_q])
         all_coeffs   = np.concatenate([V_s, V_t, V_q], axis=1)  # (nstates, total_vecs)
     else:
         all_energies = np.concatenate([e_s, e_t])
         all_coeffs   = np.concatenate([V_s, V_t], axis=1)  # (nstates, total_vecs)
-        
+
     sort_idx = np.argsort(all_energies)
     all_energies = all_energies[sort_idx]
     all_coeffs   = all_coeffs[:, sort_idx]
@@ -177,6 +176,7 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
     if rng < nstates:
         # Guard: if we didn't get enough states across blocks, warn and use what we have
         n_available = len(all_energies)
+
         if n_available < rng:
             msg = (
                 f"Warning: only {n_available} states available after merging blocks "
@@ -192,11 +192,42 @@ def diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level):
     ci_energies = all_energies
     ci_coeffs   = all_coeffs
 
+    # ------------------------------------------------------------------
+    # 5. Calculate S^2 from the spin block containing each state
+    # ------------------------------------------------------------------
+    s2_array = np.zeros(len(ci_energies))
+
+    for i in range(len(ci_energies)):
+
+        singlet_weight = np.sum(
+            ci_coeffs[:n_singlet, i]**2
+        )
+
+        triplet_weight = np.sum(
+            ci_coeffs[n_singlet:n_singlet+n_triplet, i]**2
+        )
+
+        if ci_level > 1:
+            quintet_weight = np.sum(
+                ci_coeffs[n_singlet+n_triplet:, i]**2
+            )
+        else:
+            quintet_weight = 0.0
+
+        if quintet_weight > triplet_weight and quintet_weight > singlet_weight:
+            s2_array[i] = 6.0
+
+        elif triplet_weight > singlet_weight:
+            s2_array[i] = 2.0
+
+        else:
+            s2_array[i] = 0.0
+
     msg = f"Diagonalisation complete. Returning {ci_energies.shape[0]} states.\n"
     print(msg)
     out.write(msg)
 
-    return ci_energies, ci_coeffs
+    return ci_energies, ci_coeffs, s2_array
 
 
 
@@ -258,7 +289,7 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_
         else:
             cutoff_energy = 100
         
-        ci_energies, ci_coeffs = diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level)
+        ci_energies, ci_coeffs, s2_array = diagonalise_xcis(ham_blocks, rng, nstates, out, ci_level)
 
         # Calculate transition dipole moment matrix
         dip_array = get_full_TDM(ndocc, norbs, coords, hf_orbs, ci_level)[0]
@@ -276,12 +307,14 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_
         tdms = (state0_tdms, state1_tdms) 
         
         # Print information about CI states
-        strngs, osc_arrays, s2_array = print_ci_info(out, ci_energies, ci_coeffs, ndocc, norbs, tdms, rng, cutoff_energy, ci_level, csf_tol=0.05)
+        strngs, osc_arrays = print_ci_info(
+            out, ci_energies, ci_coeffs, ndocc, norbs, tdms,
+            dip_array, rng, cutoff_energy, ci_level, csf_tol=0.05)
         strngs = (strngs[0][1:], strngs[1][1:])
 
         # Print TDM Summary
         print_tdm_info(ndocc, norbs, dip_array, ci_level, ci_energies)
-    return strngs, ci_energies - ci_energies[0], osc_arrays, s2_array
+    return strngs, ci_energies - ci_energies[0], osc_arrays
 
 
 
@@ -301,8 +334,8 @@ def rad_calc(file,params,rotation_matrix=None,converged_orbs=None):
     print('\nOrbital occupation numbers:')
     for i in range(dens_mo.shape[0]):
         print("%d: %f"%(i+1,dens_mo[i,i]))
-    strngs, ci_energies_array, osc_arrays, s2_array = ci_rot(ndocc, natoms, coord, atoms_array, energy0, rep_tens, fock_mo, hf_orbs, file, ci_level=3)
-    return strngs, ci_energies_array, osc_arrays, s2_array
+    strngs, ci_energies_array, osc_arrays = ci_rot(ndocc, natoms, coord, atoms_array, energy0, rep_tens, fock_mo, hf_orbs, file, ci_level=3)
+    return strngs, ci_energies_array, osc_arrays
 
 
 

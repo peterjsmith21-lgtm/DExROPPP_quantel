@@ -39,7 +39,7 @@ if __name__ == '__main__':
     start = time.perf_counter()
 
     # For doing individual ExROPPP calculations on one diradical
-    strngs,ci_energies_array, osc_arrays, s2_array  = rad_calc(file=optimized_geometry, params = opt_params, 
+    strngs,ci_energies_array, osc_arrays = rad_calc(file=optimized_geometry, params = opt_params, 
                                                                rotation_matrix = rotation_matrix, converged_orbs = converged_orbs)
     #Get spectrum plot for triplet
     filename = optimized_geometry + 'Triplet_Ref'
