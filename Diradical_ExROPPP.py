@@ -313,7 +313,7 @@ def ci_rot(ndocc,norbs,coords,atoms,energy0,rep_tens,fock_mat,hf_orbs, file, ci_
         strngs = (strngs[0][1:], strngs[1][1:])
 
         # Print TDM Summary
-        print_tdm_info(ndocc, norbs, dip_array, ci_level, ci_energies)
+        #print_tdm_info(ndocc, norbs, dip_array, ci_level, ci_energies)
     return strngs, ci_energies - ci_energies[0], osc_arrays
 
 

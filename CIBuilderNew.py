@@ -2229,6 +2229,7 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms,
         out_file.write("Excitation                         CI Coef       TDM X       TDM Y       TDM Z       |TDM|\n")
 
         spin = 0 # initialise total spin
+        rows = [] # (abs(f_j), formatted line) for each configuration, sorted and printed after the loop
 
         for j in range (ci_coeffs.shape[0]): # Loop over configurations in each CIS state
 
@@ -2264,11 +2265,9 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms,
                         t_j = ci_coeffs[j, i] * csf3_tdm[j, :]  # CSF j's contribution, shape (3,)
                         f_j = 2.0/3.0 * dE * np.dot(T, t_j)
 
-                    print("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
-
-                    out_file.write("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
+                    line = "%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" % \
+                           (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j)
+                    rows.append((abs(f_j), line))
 
 
             elif ci_level == 1:
@@ -2353,11 +2352,9 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms,
                         t_j = ci_coeffs[j, i] * csf3_tdm[j, :]  # CSF j's contribution, shape (3,)
                         f_j = 2.0/3.0 * dE * np.dot(T, t_j)
 
-                    print("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
-
-                    out_file.write("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
+                    line = "%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" % \
+                           (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j)
+                    rows.append((abs(f_j), line))
 
 
             elif ci_level == 2:
@@ -2496,11 +2493,9 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms,
                         t_j = ci_coeffs[j, i] * csf3_tdm[j, :]  # CSF j's contribution, shape (3,)
                         f_j = 2.0/3.0 * dE * np.dot(T, t_j)
 
-                    print("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
-
-                    out_file.write("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
+                    line = "%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" % \
+                           (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j)
+                    rows.append((abs(f_j), line))
 
 
             elif ci_level == 3:
@@ -2696,11 +2691,15 @@ def print_ci_info(out_file, ci_energies, ci_coeffs, ndocc, norbs, tdms,
                         t_j = ci_coeffs[j, i] * csf3_tdm[j, :]  # CSF j's contribution, shape (3,)
                         f_j = 2.0/3.0 * dE * np.dot(T, t_j)
 
-                    print("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
+                    line = "%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" % \
+                           (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j)
+                    rows.append((abs(f_j), line))
 
-                    out_file.write("%-30s %10.5f %10.5f %10.5f %10.5f %10.5f" %
-                          (str, ci_coeffs[j,i], t_j[0], t_j[1], t_j[2], f_j))
+        # Print the configurations for this state sorted by |TDM| (last column), largest first
+        rows.sort(key=lambda r: r[0], reverse=True)
+        for _, line in rows:
+            print(line)
+            out_file.write(line + "\n")
 
         osc3 = 2.0/3.0 * ((ci_energies[i] - ci_energies[triplet]) / toev) * (tdms[triplet][i,0]**2 + tdms[triplet][i,1]**2 + tdms[triplet][i,2]**2)  # Calculating Oscillator Strength with Triplet Ground state
         osc1 = 2.0/3.0 * ((ci_energies[i] - ci_energies[singlet]) / toev) * (tdms[singlet][i,0]**2 + tdms[singlet][i,1]**2 + tdms[singlet][i,2]**2)  # Calculating Oscillator Strength with Singlet Ground state
