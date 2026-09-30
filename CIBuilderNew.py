@@ -28,7 +28,7 @@ def build_singlet_ref_block(ndocc, energy0, Fock, rep_tens):
     # <OS1|H|ZW->
     CI[0,1] = rep_tens[SOMO1,SOMO2,SOMO1,SOMO1] - rep_tens[SOMO1,SOMO2,SOMO2,SOMO2]
     # <OS1|H|ZW+>
-    CI[0,2] = Fock[SOMO1, SOMO2]
+    CI[0,2] = 2 * Fock[SOMO1, SOMO2]
     
     # <ZW-|H|ZW->
     CI[1,1] = energy0 + 0.25 * (rep_tens[SOMO1,SOMO1,SOMO1,SOMO1] + rep_tens[SOMO2,SOMO2,SOMO2,SOMO2]) - 0.5 * rep_tens[SOMO1,SOMO2,SOMO2,SOMO1] - rep_tens[SOMO1, SOMO1, SOMO2, SOMO2]
@@ -950,7 +950,7 @@ def build_singlet_D_block(ndocc, norbs, energy0, Fock, rep_tens):
                 elif o_orb1 == o_orb4 and o_orb2 != o_orb3:
                     CI[row,col] = - Fock[o_orb2, o_orb3] + rep_tens[o_orb2, o_orb3, o_orb1, o_orb1] + rep_tens[o_orb2, o_orb1, o_orb1, o_orb3] - rep_tens[o_orb2, o_orb3, SOMO1, SOMO1] - rep_tens[o_orb2, o_orb3, SOMO2, SOMO2] + 0.5 * rep_tens[o_orb2, SOMO1, SOMO1, o_orb3] + 0.5 * rep_tens[o_orb2, SOMO2, SOMO2, o_orb3]
                 elif o_orb2 == o_orb3 and o_orb1 != o_orb4:
-                    CI[row,col] = - Fock[o_orb1, o_orb4] + rep_tens[o_orb1, o_orb4, o_orb1, o_orb1] + rep_tens[o_orb1, o_orb1, o_orb1, o_orb4] - rep_tens[o_orb1, o_orb4, SOMO1, SOMO1] - rep_tens[o_orb1, o_orb4, SOMO2, SOMO2] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb4] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb4]
+                    CI[row,col] = - Fock[o_orb1, o_orb4] + rep_tens[o_orb1, o_orb4, o_orb2, o_orb2] + rep_tens[o_orb1, o_orb2, o_orb2, o_orb4] - rep_tens[o_orb1, o_orb4, SOMO1, SOMO1] - rep_tens[o_orb1, o_orb4, SOMO2, SOMO2] + 0.5 * rep_tens[o_orb1, SOMO1, SOMO1, o_orb4] + 0.5 * rep_tens[o_orb1, SOMO2, SOMO2, o_orb4]
                 else:
                     CI[row,col] = rep_tens[o_orb1, o_orb3, o_orb2, o_orb4] + rep_tens[o_orb1, o_orb4, o_orb2, o_orb3]
             o_orb4 += 1
