@@ -733,18 +733,22 @@ ax.plot(
 # Experimental data
 # ============================================================
 
-# Remove "_prune" from the molecule name when looking
+# Remove file-variant suffixes from the molecule name when looking
 # for the corresponding experimental dataset.
 #
 # Examples:
 #
 # A-A_prune     -> A-A
 # M-CDR_prune   -> M-CDR
+# M-CDR_new     -> M-CDR
 # D-D_prune     -> D-D
 # D-A_prune     -> D-A
 
 experimental_name = args.molecule_name.replace(
     '_prune',
+    ''
+).replace(
+    '_new',
     ''
 )
 
