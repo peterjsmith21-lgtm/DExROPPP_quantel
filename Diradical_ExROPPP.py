@@ -339,7 +339,7 @@ def rad_calc(file,params,rotation_matrix=None,converged_orbs=None):
 
 
 
-
+# This code is no longer being used to print the states
 def print_tdm_info(ndocc, norbs, tdms, ci_level, ci_energies=None, tdm_threshold=1e-5):
 
     nvirt = norbs - ndocc - 2
